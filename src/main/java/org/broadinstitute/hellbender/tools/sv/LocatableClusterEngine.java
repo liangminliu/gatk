@@ -137,6 +137,7 @@ public abstract class LocatableClusterEngine<T extends Locatable> {
      * @return the IDs for clusters that are complete and ready for processing
      */
     private List<Integer> cluster(final T item) {
+
         // Get list of item IDs from active clusters that cluster with this item
         final Set<Long> linkedItemIds = idToItemMap.entrySet().stream()
                 .filter(other -> other.getKey().intValue() != currentItemId && clusterTogether(item, other.getValue()))

@@ -79,6 +79,7 @@ public final class SVCluster extends GATKTool {
     public static final String SAMPLE_COVERAGE_LONG_NAME = "sample-coverage";
     public static final String MIN_SIZE_LONG_NAME = "min-size";
     public static final String DEPTH_ONLY_INCLUDE_INTERVAL_OVERLAP_LONG_NAME = "depth-include-overlap";
+    public static final String MIN_DEPTH_SIZE_LONG_NAME = "min-depth-size";
 
     @Argument(
             doc = "Split reads file",
@@ -129,6 +130,14 @@ public final class SVCluster extends GATKTool {
             optional = true
     )
     private double minDepthOnlyIncludeOverlap = 0.5;
+
+    @Argument(
+            doc = "Minimum depth-only call size to emit",
+            fullName = MIN_DEPTH_SIZE_LONG_NAME,
+            minValue = 0,
+            optional = true
+    )
+    private int minDepthOnlySize = 5000;
 
     private SAMSequenceDictionary dictionary;
 
@@ -182,7 +191,7 @@ public final class SVCluster extends GATKTool {
 
         defragmenter = new SVDepthOnlyCallDefragmenter(dictionary);
         nonDepthRawCallsBuffer = new ArrayList<>();
-        clusterEngine = new SVClusterEngine(dictionary);
+        clusterEngine = new SVClusterEngineNoCNV(dictionary, false, SVClusterEngine.BreakpointSummaryStrategy.MEDIAN_START_MEDIAN_END);
         breakpointRefiner = new BreakpointRefiner(sampleCoverageMap);
         evidenceCollector = new SVEvidenceCollector(splitReadSource, discordantPairSource, dictionary, progressMeter);
 
@@ -279,16 +288,21 @@ public final class SVCluster extends GATKTool {
     }
 
     private void processClusters() {
-        final List<SVCallRecordWithEvidence> defragmentedCalls = defragmenter.getOutput();
-        defragmentedCalls.stream().forEachOrdered(clusterEngine::add);
-        nonDepthRawCallsBuffer.stream()
+        final Stream<SVCallRecordWithEvidence> defragmentedStream = defragmenter.getOutput().stream();
+        final Stream<SVCallRecordWithEvidence> nonDepthStream = nonDepthRawCallsBuffer.stream()
                 .map(SVCallRecordWithEvidence::new)
-                .flatMap(this::convertInversionsToBreakends)
+                .flatMap(this::convertInversionsToBreakends);
+        //Combine and sort depth and non-depth calls because they must be added in dictionary order
+        Stream.concat(defragmentedStream, nonDepthStream)
+                .sorted(IntervalUtils.getDictionaryOrderComparator(dictionary))
                 .forEachOrdered(clusterEngine::add);
         nonDepthRawCallsBuffer.clear();
         final List<SVCallRecordWithEvidence> clusteredCalls = clusterEngine.getOutput();
         final List<SVCallRecordWithEvidence> callsWithEvidence = evidenceCollector.collectEvidence(clusteredCalls);
-        final List<SVCallRecordWithEvidence> refinedCalls = callsWithEvidence.stream().map(breakpointRefiner::refineCall).collect(Collectors.toList());
+        final List<SVCallRecordWithEvidence> refinedCalls = callsWithEvidence.stream()
+                .filter(call -> !SVDepthOnlyCallDefragmenter.isDepthOnlyCall(call) || call.getLength() >= minDepthOnlySize)
+                .map(breakpointRefiner::refineCall)
+                .collect(Collectors.toList());
         final List<SVCallRecordWithEvidence> finalCalls = clusterEngine.deduplicateItems(refinedCalls);
         write(finalCalls);
     }
@@ -423,8 +437,7 @@ public final class SVCluster extends GATKTool {
         if (tree == null) {
             return false;
         }
-        final long overlap = totalOverlap(call.getStart(), call.getEnd(), tree);
-        final double overlapFraction = overlap / (double) call.getLength();
+        final double overlapFraction = totalOverlap(call.getStart(), call.getEnd(), tree) / (double) call.getLength();
         return overlapFraction >= minDepthOnlyIncludeOverlap;
     }
 

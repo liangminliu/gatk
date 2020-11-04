@@ -7,22 +7,20 @@ import htsjdk.variant.variantcontext.StructuralVariantType;
 import org.apache.commons.math3.stat.descriptive.moment.Mean;
 import org.broadinstitute.hellbender.tools.spark.sv.utils.GATKSVVCFConstants;
 import org.broadinstitute.hellbender.utils.IntervalUtils;
-import org.broadinstitute.hellbender.utils.MathUtils;
 import org.broadinstitute.hellbender.utils.SimpleInterval;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvidence> {
 
-    private static final double MIN_RECIPROCAL_OVERLAP_DEPTH = 0.8;
-    private final double BREAKEND_CLUSTERING_WINDOW_FRACTION = 0.5;
-    private final int MIN_BREAKEND_CLUSTERING_WINDOW = 50;
-    private final int MAX_BREAKEND_CLUSTERING_WINDOW = 300;
-    private final int MIXED_CLUSTERING_WINDOW = 2000;
-    private BreakpointSummaryStrategy breakpointSummaryStrategy;
+    protected static final double MIN_RECIPROCAL_OVERLAP_DEPTH = 0.8;
+    protected final double BREAKEND_CLUSTERING_WINDOW_FRACTION = 0.5;
+    protected final int MIN_BREAKEND_CLUSTERING_WINDOW = 50;
+    protected final int MAX_BREAKEND_CLUSTERING_WINDOW = 300;
+    protected final int MIXED_CLUSTERING_WINDOW = 2000;
+    protected BreakpointSummaryStrategy breakpointSummaryStrategy;
 
     public enum BreakpointSummaryStrategy {
         /**
@@ -65,12 +63,18 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
 
     @Override
     protected SVCallRecordWithEvidence flattenCluster(final Collection<SVCallRecordWithEvidence> cluster) {
-        final List<Integer> startPositions = cluster.stream().map(SVCallRecordWithEvidence::getStart).sorted().collect(Collectors.toList());
-        final List<Integer> endPositions = cluster.stream().map(SVCallRecordWithEvidence::getEnd).sorted().collect(Collectors.toList());
+        final Collection<SVCallRecordWithEvidence> mostPreciseCalls;
+        if (cluster.stream().allMatch(SVClusterEngine::isDepthOnlyCall)) {
+            mostPreciseCalls = cluster;
+        } else {
+            mostPreciseCalls = cluster.stream().filter(call -> !SVDepthOnlyCallDefragmenter.isDepthOnlyCall(call)).collect(Collectors.toList());
+        }
+        final List<Integer> startPositions = mostPreciseCalls.stream().map(SVCallRecordWithEvidence::getStart).sorted().collect(Collectors.toList());
+        final List<Integer> endPositions = mostPreciseCalls.stream().map(SVCallRecordWithEvidence::getEnd).sorted().collect(Collectors.toList());
         //use the mid value of the sorted list so the start and end represent real breakpoint observations
         final int medianStart = startPositions.get(startPositions.size() / 2);
         final int medianEnd = endPositions.get(endPositions.size() / 2);
-        final SVCallRecordWithEvidence exampleCall = cluster.iterator().next();
+        final SVCallRecordWithEvidence exampleCall = mostPreciseCalls.iterator().next();
         final int length = exampleCall.getContig().equals(exampleCall.getEndContig()) && !exampleCall.getType().equals(StructuralVariantType.INS) ? medianEnd - medianStart + 1 : exampleCall.getLength();
         final List<String> algorithms = cluster.stream().flatMap(v -> v.getAlgorithms().stream()).distinct().collect(Collectors.toList());
         final List<Genotype> clusterSamples = cluster.stream().flatMap(v -> v.getGenotypes().stream()).collect(Collectors.toList());
@@ -205,7 +209,7 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
                 example.getDiscordantPairs());
     }
 
-    private boolean clusterTogetherBothDepthOnly(final SVCallRecordWithEvidence a, final SVCallRecordWithEvidence b) {
+    protected boolean clusterTogetherBothDepthOnly(final SVCallRecordWithEvidence a, final SVCallRecordWithEvidence b) {
         if (!a.getContig().equals(a.getEndContig()) || !b.getContig().equals(b.getEndContig())) {
             throw new IllegalArgumentException("Attempted to cluster depth-only calls with endpoints on different contigs");
         }
@@ -214,7 +218,7 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
         return IntervalUtils.isReciprocalOverlap(intervalA, intervalB, MIN_RECIPROCAL_OVERLAP_DEPTH);
     }
 
-    private boolean clusterTogetherBothWithEvidence(final SVCallRecordWithEvidence a, final SVCallRecordWithEvidence b) {
+    protected boolean clusterTogetherBothWithEvidence(final SVCallRecordWithEvidence a, final SVCallRecordWithEvidence b) {
         // Reject if one is intrachromosomal and the other isn't
         final boolean intrachromosomalA = a.getContig().equals(a.getEndContig());
         final boolean intrachromosomalB = b.getContig().equals(b.getEndContig());
@@ -228,7 +232,7 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
         return intervalAStart.overlaps(intervalBStart) && intervalAEnd.overlaps(intervalBEnd);
     }
 
-    private boolean clusterTogetherMixedEvidence(final SVCallRecordWithEvidence a, final SVCallRecordWithEvidence b) {
+    protected boolean clusterTogetherMixedEvidence(final SVCallRecordWithEvidence a, final SVCallRecordWithEvidence b) {
         final boolean intrachromosomalA = a.getContig().equals(a.getEndContig());
         final boolean intrachromosomalB = b.getContig().equals(b.getEndContig());
         if (!(intrachromosomalA && intrachromosomalB)) return false;
@@ -246,7 +250,7 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
         }
     }
 
-    private SimpleInterval getEndClusteringInterval(final SVCallRecordWithEvidence call) {
+    protected SimpleInterval getEndClusteringInterval(final SVCallRecordWithEvidence call) {
         if (this.genomicToBinMap == null) {
             final int padding = getEndpointClusteringPadding(call);
             return call.getEndAsInterval().expandWithinContig(padding, dictionary);
@@ -255,7 +259,7 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
         }
     }
 
-    private int getEndpointClusteringPadding(final SVCallRecordWithEvidence call) {
+    protected int getEndpointClusteringPadding(final SVCallRecordWithEvidence call) {
         return (int) Math.min(MAX_BREAKEND_CLUSTERING_WINDOW, Math.max(MIN_BREAKEND_CLUSTERING_WINDOW, BREAKEND_CLUSTERING_WINDOW_FRACTION * call.getLength()));
     }
 
