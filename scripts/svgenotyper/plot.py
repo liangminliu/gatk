@@ -8,7 +8,7 @@ import ternary
 
 
 SVTYPES_LIST = ['DEL', 'DUP', 'INS', 'INV', 'BND']
-INFOS_LIST = ['PPE', 'PSR1', 'PSR2', 'PRD', 'EPE', 'ESR1', 'ESR2', 'PHI_PE', 'PHI_SR1', 'PHI_SR2']
+INFOS_LIST = ['PPE', 'PSR1', 'PSR2', 'EPE', 'ESR1', 'ESR2', 'PHI_PE', 'PHI_SR1', 'PHI_SR2']
 SAMPLE_SITE_PLOT_DIR = 'sites'
 
 
@@ -21,8 +21,11 @@ def plot_sites_per_genome_summary(vcf_path: str, out_path: str):
         for sample in samples_list:
             if svtype != 'DUP' and sum([x for x in record.samples[sample]['GT'] if x is not None]) > 0:
                 site_counts[sample][svtype] += 1
-            elif svtype == 'DUP' and record.samples[sample]['CN'] > record.samples[sample]['NCN']:
-                site_counts[sample][svtype] += 1
+            elif svtype == 'DUP':
+                if 'CN' in record.samples[sample] and record.samples[sample]['CN'] > record.samples[sample]['NCN']:
+                    site_counts[sample][svtype] += 1
+                elif sum([x for x in record.samples[sample]['GT'] if x is not None]) > 0:
+                    site_counts[sample][svtype] += 1
     vcf.close()
 
     rows = 1
@@ -68,7 +71,7 @@ def plot_info_field_histograms(vcf_path: str, out_path: str):
         'PPE': unit_interval_bins,
         'PSR1': unit_interval_bins,
         'PSR2': unit_interval_bins,
-        'PRD': unit_interval_bins,
+        #'PRD': unit_interval_bins,
         'EPE': unit_interval_bins,
         'ESR1': unit_interval_bins,
         'ESR2': unit_interval_bins,
@@ -97,12 +100,13 @@ def plot_sites(vcf_path: str, mean_coverage_path: str, vids: list = None, out_di
     figure_height = 6
     markersize = 3
     image_ext = ".png"
+    mean_cov_ploidy = 2.0
 
     def _plot_counts(axis, x: np.ndarray, y: np.ndarray, xlabel: str = None, ylabel: str = None, xmin: float = -0.05,
                      xmax: float = 3., ymin: float = -0.05, ymax: float = 1.05):
-        l1 = axis.plot(x[gt0], y[gt0], 'o', markersize=markersize)[0]
-        l2 = axis.plot(x[gt1], y[gt1], 'o', markersize=markersize)[0]
-        l3 = axis.plot(x[gt2], y[gt2], 'o', markersize=markersize)[0]
+        l1 = axis.plot(x[gt0], y[gt0], 'o', markersize=markersize, color='g')[0]
+        l2 = axis.plot(x[gt1], y[gt1], 'o', markersize=markersize, color='b')[0]
+        l3 = axis.plot(x[gt2], y[gt2], 'o', markersize=markersize, color='r')[0]
         axis.set_xlabel(xlabel)
         axis.set_ylabel(ylabel)
         axis.set_xlim([xmin, xmax])
@@ -113,7 +117,7 @@ def plot_sites(vcf_path: str, mean_coverage_path: str, vids: list = None, out_di
 
     vcf = VariantFile(vcf_path)
     samples_list = list(vcf.header.samples)
-    mean_cov = mean_cov_df.loc[samples_list].values.squeeze(-1)
+    mean_cov = mean_cov_df.loc[samples_list].values.squeeze(-1) / mean_cov_ploidy
     if vids is not None:
         vids_set = set(vids)
     for record in vcf.fetch():
@@ -126,8 +130,8 @@ def plot_sites(vcf_path: str, mean_coverage_path: str, vids: list = None, out_di
 
         gt = np.asarray([sum(record.samples[sample]['GT']) for sample in samples_list])
         pe = np.asarray([record.samples[sample]['PE'] for sample in samples_list]) / mean_cov
-        sr1 = np.asarray([record.samples[sample]['SSR'] for sample in samples_list]) / mean_cov
-        sr2 = np.asarray([record.samples[sample]['ESR'] for sample in samples_list]) / mean_cov
+        sr1 = np.asarray([record.samples[sample]['SR1'] for sample in samples_list]) / mean_cov
+        sr2 = np.asarray([record.samples[sample]['SR2'] for sample in samples_list]) / mean_cov
         pl = np.asarray([record.samples[sample]['PL'] for sample in samples_list])
         gq = np.asarray([record.samples[sample]['GQ'] for sample in samples_list])
         cnlp = np.asarray([record.samples[sample]['CNLP'] for sample in samples_list])
@@ -142,28 +146,35 @@ def plot_sites(vcf_path: str, mean_coverage_path: str, vids: list = None, out_di
         gt1 = gt == 1
         gt2 = gt >= 2
 
+        pl_max = 31
+        pl[pl > pl_max] = pl_max
+        pl_lim = pl_max + 1.
         count_lim = max(3., pe.max() + 0.1, sr1.max() + 0.1, sr2.max() + 0.1)
-        l1, l2, l3 = _plot_counts(axes[0, 0], x=pe, y=pl, xlabel='Norm PE', ylabel='PL', xmax=count_lim)
-        _plot_counts(axes[0, 1], x=sr1, y=pl, xlabel='Norm SR1', ylabel='PL', xmax=count_lim)
-        _plot_counts(axes[0, 2], x=sr2, y=pl, xlabel='Norm SR2', ylabel='PL', xmax=count_lim)
+        l1, l2, l3 = _plot_counts(axes[0, 0], x=pe, y=pl, xlabel='Norm PE', ylabel='PL', xmax=count_lim, ymax=pl_lim)
+        _plot_counts(axes[0, 1], x=sr1, y=pl, xlabel='Norm SR1', ylabel='PL', xmax=count_lim, ymax=pl_lim)
+        _plot_counts(axes[0, 2], x=sr2, y=pl, xlabel='Norm SR2', ylabel='PL', xmax=count_lim, ymax=pl_lim)
 
-        gq_lim = 105.
+        gq_max = 31
+        gq[gq > gq_max] = gq_max
+        gq_lim = gq_max + 1.
         _plot_counts(axes[1, 0], x=pe, y=gq, xlabel='Norm PE', ylabel='GQ', xmax=count_lim, ymax=gq_lim)
         _plot_counts(axes[1, 1], x=sr1, y=gq, xlabel='Norm SR1', ylabel='GQ', xmax=count_lim, ymax=gq_lim)
         _plot_counts(axes[1, 2], x=sr2, y=gq, xlabel='Norm SR2', ylabel='GQ', xmax=count_lim, ymax=gq_lim)
 
-        cnlp_lim = 21.
+        cnlp_max = 20
+        cnlp[cnlp > cnlp_max] = cnlp_max
+        cnlp_lim = cnlp_max + 1.
         cnlp_lb = -1
-        _plot_counts(axes[2, 0], x=cnlp[..., 0], y=pl, xlabel='LP-CN=0', ylabel='PL', xmin=cnlp_lb, xmax=cnlp_lim)
-        _plot_counts(axes[2, 1], x=cnlp[..., 1], y=pl, xlabel='LP-CN=1', ylabel='PL', xmin=cnlp_lb, xmax=cnlp_lim)
-        _plot_counts(axes[2, 2], x=cnlp[..., 2], y=pl, xlabel='LP-CN=2', ylabel='PL', xmin=cnlp_lb, xmax=cnlp_lim)
-        _plot_counts(axes[2, 3], x=cnlp[..., 3], y=pl, xlabel='LP-CN=3', ylabel='PL', xmin=cnlp_lb, xmax=cnlp_lim)
-        _plot_counts(axes[2, 4], x=cnlp[..., 4], y=pl, xlabel='LP-CN=4', ylabel='PL', xmin=cnlp_lb, xmax=cnlp_lim)
+        _plot_counts(axes[2, 0], x=cnlp[..., 0], y=pl, xlabel='LP-CN=0', ylabel='PL', xmin=cnlp_lb, xmax=cnlp_lim, ymax=pl_lim)
+        _plot_counts(axes[2, 1], x=cnlp[..., 1], y=pl, xlabel='LP-CN=1', ylabel='PL', xmin=cnlp_lb, xmax=cnlp_lim, ymax=pl_lim)
+        _plot_counts(axes[2, 2], x=cnlp[..., 2], y=pl, xlabel='LP-CN=2', ylabel='PL', xmin=cnlp_lb, xmax=cnlp_lim, ymax=pl_lim)
+        _plot_counts(axes[2, 3], x=cnlp[..., 3], y=pl, xlabel='LP-CN=3', ylabel='PL', xmin=cnlp_lb, xmax=cnlp_lim, ymax=pl_lim)
+        _plot_counts(axes[2, 4], x=cnlp[..., 4], y=pl, xlabel='LP-CN=4', ylabel='PL', xmin=cnlp_lb, xmax=cnlp_lim, ymax=pl_lim)
 
         pf.delaxes(axes[0, 3])
         pf.delaxes(axes[0, 4])
 
-        info_keys = ['PPE', 'PSR1', 'PSR2', 'PRD']
+        info_keys = ['PPE', 'PSR1', 'PSR2']
         axes[1, 3].bar(x=info_keys, height=[record.info[x] for x in info_keys])
         axes[1, 3].set_ylim([0, 1.05])
 
@@ -179,6 +190,105 @@ def plot_sites(vcf_path: str, mean_coverage_path: str, vids: list = None, out_di
         plt.close(pf)
     vcf.close()
 
+
+def plot_sites_hist(vcf_path: str, mean_coverage_path: str, vids: list = None, out_dir: str = 'figures'):
+
+    rows = 3
+    cols = 5
+    figure_width = 12
+    figure_height = 6
+    image_ext = ".png"
+    mean_cov_ploidy = 2.0
+
+    def _plot_counts(axis, x: np.ndarray, bins: np.ndarray, xlabel: str = None):
+        l1 = axis.hist(np.asarray([x[gt0], x[gt1], x[gt2]]), bins=bins, stacked=True, edgecolor='k', linewidth=1)
+        axis.set_xlabel(xlabel)
+        axis.set_xlim([bins[0], bins[-1]])
+        return l1
+
+    mean_cov_df = pd.read_csv(mean_coverage_path, sep='\t', header=None, index_col=0)
+
+    vcf = VariantFile(vcf_path)
+    samples_list = list(vcf.header.samples)
+    mean_cov = mean_cov_df.loc[samples_list].values.squeeze(-1) / mean_cov_ploidy
+    if vids is not None:
+        vids_set = set(vids)
+    for record in vcf.fetch():
+        vid = record.id
+        if vids is not None and vid not in vids_set:
+            continue
+        # TODO: skip depth calls
+        if record.info['ALGORITHMS'] == 'depth':
+            continue
+
+        svtype = record.info['SVTYPE']
+        if svtype == 'DUP':
+            gt = np.asarray([record.samples[sample]['CN'] - record.samples[sample]['NCN'] for sample in samples_list])
+        else:
+            gt = np.asarray([sum(record.samples[sample]['GT']) for sample in samples_list])
+        pe = np.asarray([record.samples[sample]['PE'] for sample in samples_list]) / mean_cov
+        sr1 = np.asarray([record.samples[sample]['SR1'] for sample in samples_list]) / mean_cov
+        sr2 = np.asarray([record.samples[sample]['SR2'] for sample in samples_list]) / mean_cov
+        pl = np.asarray([record.samples[sample]['PL'] for sample in samples_list])
+        gq = np.asarray([record.samples[sample]['GQ'] for sample in samples_list])
+        cnlp = np.asarray([record.samples[sample]['CNLP'] for sample in samples_list])
+
+        pf, axes = plt.subplots(rows, cols, figsize=(figure_width, figure_height))
+
+        title = "{:s} {:s}:{:d}-{:d} {:s} size={:d}".format(vid, record.chrom, record.start, record.stop,
+                                                            record.info['SVTYPE'], record.info['SVLEN'])
+        pf.suptitle(title)
+
+        gt0 = gt == 0
+        gt1 = gt == 1
+        gt2 = gt >= 2
+
+        pl_max = 31
+        pl[pl > pl_max] = pl_max
+        pl_lim = pl_max + 1.
+        count_lim = max(3., pe.max() + 0.1, sr1.max() + 0.1, sr2.max() + 0.1)
+        bins = np.arange(start=0, stop=count_lim, step=0.1)
+        l1 = _plot_counts(axes[0, 0], x=pe, bins=bins, xlabel='Norm PE')
+        _plot_counts(axes[0, 1], x=sr1, bins=bins, xlabel='Norm SR1')
+        _plot_counts(axes[0, 2], x=sr2, bins=bins, xlabel='Norm SR2')
+
+        gq_max = 31
+        gq[gq > gq_max] = gq_max
+        gq_lim = gq_max + 1.
+        bins = np.arange(start=0, stop=gq_lim, step=1)
+        _plot_counts(axes[1, 0], x=pl[..., 0], bins=bins, xlabel='PL0')
+        _plot_counts(axes[1, 1], x=pl[..., 1], bins=bins, xlabel='PL1')
+        _plot_counts(axes[1, 2], x=pl[..., 2], bins=bins, xlabel='PL2')
+        _plot_counts(axes[1, 3], x=gq, bins=bins, xlabel='GQ')
+
+        cnlp_max = 20
+        cnlp[cnlp > cnlp_max] = cnlp_max
+        cnlp_lim = cnlp_max + 1.
+        cnlp_lb = -1
+        bins = np.arange(start=0, stop=cnlp_lim, step=1)
+        _plot_counts(axes[2, 0], x=cnlp[..., 0], bins=bins, xlabel='LP-CN=0')
+        _plot_counts(axes[2, 1], x=cnlp[..., 1], bins=bins, xlabel='LP-CN=1')
+        _plot_counts(axes[2, 2], x=cnlp[..., 2], bins=bins, xlabel='LP-CN=2')
+        _plot_counts(axes[2, 3], x=cnlp[..., 3], bins=bins, xlabel='LP-CN=3')
+        _plot_counts(axes[2, 4], x=cnlp[..., 4], bins=bins, xlabel='LP-CN=4')
+
+        pf.delaxes(axes[0, 3])
+
+        info_keys = ['PPE', 'PSR1', 'PSR2']
+        axes[0, 4].bar(x=info_keys, height=[record.info[x] for x in info_keys])
+        axes[0, 4].set_ylim([0, 1.05])
+
+        info_keys = ['EPE', 'ESR1', 'ESR2']
+        axes[1, 4].bar(x=info_keys, height=[record.info[x] for x in info_keys])
+
+        labels = ['HOM_REF', 'HET', 'HOM_VAR']
+        pf.legend(labels=labels, loc='center', bbox_to_anchor=(0.65, 0.8))
+        plt.subplots_adjust(left=0.05, right=0.95, wspace=0.4, hspace=0.4)
+
+        figure_path = os.path.join(out_dir, vid + image_ext)
+        plt.savefig(figure_path)
+        plt.close(pf)
+    vcf.close()
 
 def plot_genotype_ternary_diagrams(vcf_path: str, out_path: str):
 
@@ -197,7 +307,7 @@ def plot_genotype_ternary_diagrams(vcf_path: str, out_path: str):
         fontsize = 16.
         tax.set_title(title="%s (n=%d)" % (label, len(data)))
         if len(data) > 0:
-            tax.scatter(np.asarray(data)*scale, marker='D', color='g', s=1, alpha=0.2)
+            tax.scatter(np.asarray(data)*scale, marker='D', color='g', s=4, alpha=0.2)
         tax.plot(hwe*scale, linewidth=1.0, label="HWE", color='k')
         tax.get_axes().axis('off')
         tax.clear_matplotlib_ticks()
@@ -212,10 +322,11 @@ def plot_genotype_ternary_diagrams(vcf_path: str, out_path: str):
     samples = vcf.header.samples
     for record in vcf.fetch():
         svtype = record.info['SVTYPE']
-        if svtype != "DUP":
-            genotypes[svtype].append([sum(record.samples[sample]['GT']) for sample in samples])
+        if svtype == 'DUP':
+            gt = [record.samples[sample]['CN'] - record.samples[sample]['NCN'] for sample in samples]
         else:
-            genotypes[svtype].append([record.samples[sample]['CN'] - record.samples[sample]['NCN'] for sample in samples])
+            gt = [sum(record.samples[sample]['GT']) for sample in samples]
+        genotypes[svtype].append(gt)
         gqs[svtype].append([record.samples[sample]['GQ'] for sample in samples])
     vcf.close()
 
@@ -233,7 +344,7 @@ def plot_genotype_ternary_diagrams(vcf_path: str, out_path: str):
                 gt_copy[locs] = 1
                 gt_copy[~locs] = 0
                 gt_counts[:, j] = gt_copy.sum(axis=1)
-            gt_freq = gt_counts / gt_counts.sum(axis=1, keepdims=True)
+            gt_freq = gt_counts / gt.shape[-1]
         for k in range(len(gq_cutoffs)):
             if gt.shape[0] > 0:
                 gt_freq_k = gt_freq.copy()
@@ -298,7 +409,7 @@ def main():
         site_plots_dir = os.path.join(args.out_dir, SAMPLE_SITE_PLOT_DIR)
         if not os.path.exists(site_plots_dir):
             os.makedirs(site_plots_dir)
-        plot_sites(vcf_path=args.vcf, mean_coverage_path=args.coverage_file, vids=args.sites, out_dir=site_plots_dir)
+        plot_sites_hist(vcf_path=args.vcf, mean_coverage_path=args.coverage_file, vids=args.sites, out_dir=site_plots_dir)
 
 
 if __name__== "__main__":

@@ -15,7 +15,7 @@ from . import io
 
 def train_epoch(svi: SVI, data: SVGenotyperData, epoch: int, scheduler: pyro.optim.LambdaLR) -> float:
     loss = svi.step(data_pe=data.pe_t, data_sr1=data.sr1_t, data_sr2=data.sr2_t, depth_t=data.depth_t,
-                    rd_gt_prob_t=data.rd_gt_prob_t)
+                    svlen_t=data.svlen_t, rd_gt_prob_t=data.rd_gt_prob_t)
     scheduler.step(epoch)
     return loss
 
@@ -94,10 +94,8 @@ def run(args: dict,
         raise ValueError('SV type {:s} not supported for genotyping.'.format(str(svtype.name)))
 
     model = SVGenotyperPyroModel(svtype=svtype, k=num_states, tensor_dtype=default_dtype, mu_eps_pe=args['eps_pe'], mu_eps_sr1=args['eps_sr1'],
-                                 mu_eps_sr2=args['eps_sr2'], mu_lambda_pe=args['lambda_pe'], mu_lambda_sr1=args['lambda_sr1'],
-                                 mu_lambda_sr2=args['lambda_sr2'], var_phi_pe=args['phi_pe'], var_phi_sr1=args['phi_sr1'],
-                                 var_phi_sr2=args['phi_sr2'], mu_eta_q=args['eta_q'], mu_eta_r=args['eta_r'],
-                                 device=args['device'])
+                                 mu_eps_sr2=args['eps_sr2'], var_phi_pe=args['phi_pe'], var_phi_sr1=args['phi_sr1'],
+                                 var_phi_sr2=args['phi_sr2'], read_length=args['read_length'], device=args['device'])
     data = io.load_data(batch_size=batch_size, mean_coverage_path=args['coverage_file'], samples_path=args['samples_file'],
                         svtype=svtype, num_states=model.k, depth_dilution_factor=args['depth_dilution_factor'],
                         tensor_dtype=default_dtype, device=args['device'])
@@ -125,15 +123,16 @@ def save_model(model: SVGenotyperPyroModel, base_path: str):
             'mu_eps_pe': model.mu_eps_pe,
             'mu_eps_sr1': model.mu_eps_sr1,
             'mu_eps_sr2': model.mu_eps_sr2,
-            'mu_lambda_pe': model.mu_lambda_pe,
-            'mu_lambda_sr1': model.mu_lambda_sr1,
-            'mu_lambda_sr2': model.mu_lambda_sr2,
+            #'mu_lambda_pe': model.mu_lambda_pe,
+            #'mu_lambda_sr1': model.mu_lambda_sr1,
+            #'mu_lambda_sr2': model.mu_lambda_sr2,
             'var_phi_pe': model.var_phi_pe,
             'var_phi_sr1': model.var_phi_sr1,
             'var_phi_sr2': model.var_phi_sr2,
-            'mu_eta_q': model.mu_eta_q,
-            'mu_eta_r': model.mu_eta_r,
+            #'mu_eta_q': model.mu_eta_q,
+            #'mu_eta_r': model.mu_eta_r,
             'svtype': model.svtype.name,
+            'read_length': model.read_length,
             'loss': model.loss,
             'guide_loc': pyro.param('AutoDiagonalNormal.loc').tolist(),
             'guide_scale': pyro.param('AutoDiagonalNormal.scale').tolist()

@@ -32,9 +32,8 @@ def run(args,
         raise RuntimeError("Model at not found: {:s}".format(base_path))
 
     model = SVGenotyperPyroModel(svtype=svtype, k=params['k'], tensor_dtype=default_dtype, mu_eps_pe=params['mu_eps_pe'], mu_eps_sr1=params['mu_eps_sr1'],
-                                 mu_eps_sr2=params['mu_eps_sr2'], mu_lambda_pe=params['mu_lambda_pe'], mu_lambda_sr1=params['mu_lambda_sr1'],
-                                 mu_lambda_sr2=params['mu_lambda_sr2'], var_phi_pe=params['var_phi_pe'], var_phi_sr1=params['var_phi_sr1'],
-                                 var_phi_sr2=params['var_phi_sr2'], mu_eta_q=params['mu_eta_q'], mu_eta_r=params['mu_eta_r'],
+                                 mu_eps_sr2=params['mu_eps_sr2'], var_phi_pe=params['var_phi_pe'], var_phi_sr1=params['var_phi_sr1'],
+                                 var_phi_sr2=params['var_phi_sr2'], read_length=params['read_length'],
                                  device=args['device'], loss=params['loss'])
     load_param_store(base_path, device=args['device'])
     vids_list = io.load_list(base_path + ".vids.list")
@@ -74,38 +73,38 @@ def get_output(vids_list: list, freq_z: dict, stats: dict, params: dict):
             phi_pe = stats['phi_pe']['mean'][i]
         else:
             phi_pe = 0
-        if 'eta_r' in stats:
-            eta_r = stats['eta_r']['mean'][i] * params['mu_eta_r']
-        else:
-            eta_r = 0
+        #if 'eta_r' in stats:
+        #    eta_r = stats['eta_r']['mean'][i] * params['mu_eta_r']
+        #else:
+        #    eta_r = 0
         output_dict[vid] = {
             'freq_z': freq_z[i, :],
             'p_m_pe': stats['m_pe']['mean'][i],
             'p_m_sr1': stats['m_sr1']['mean'][i],
             'p_m_sr2': stats['m_sr2']['mean'][i],
-            'p_m_rd': stats['m_rd']['mean'][i],
+            #'p_m_rd': stats['m_rd']['mean'][i],
             'eps_pe': eps_pe,
             'eps_sr1': stats['eps_sr1']['mean'][i] * params['mu_eps_sr1'],
             'eps_sr2': stats['eps_sr2']['mean'][i] * params['mu_eps_sr2'],
             'phi_pe': phi_pe,
             'phi_sr1': stats['phi_sr1']['mean'][i],
             'phi_sr2': stats['phi_sr2']['mean'][i],
-            'eta_q': stats['eta_q']['mean'][i] * params['mu_eta_q'],
-            'eta_r': eta_r
+            #'eta_q': stats['eta_q']['mean'][i] * params['mu_eta_q'],
+            #'eta_r': eta_r
         }
     return output_dict
 
 
 def get_global_stats(stats: dict, model: SVGenotyperPyroModel):
-    global_sites = ['pi_sr1', 'pi_sr2', 'pi_pe', 'pi_rd', 'lambda_pe', 'lambda_sr1', 'lambda_sr2']
+    global_sites = ['pi_sr1', 'pi_sr2', 'pi_pe', 'pi_rd'] #, 'lambda_pe', 'lambda_sr1', 'lambda_sr2']
     global_site_scales = {
         'pi_sr1': 1.,
         'pi_sr2': 1.,
         'pi_pe': 1.,
-        'pi_rd': 1.,
-        'lambda_pe': model.mu_lambda_pe,
-        'lambda_sr1': model.mu_lambda_sr1,
-        'lambda_sr2': model.mu_lambda_sr2
+        #'pi_rd': 1.,
+        #'lambda_pe': model.mu_lambda_pe,
+        #'lambda_sr1': model.mu_lambda_sr1,
+        #'lambda_sr2': model.mu_lambda_sr2
     }
     global_stats = {}
     for site in global_sites:
@@ -121,7 +120,7 @@ def get_predictive_stats(samples: dict):
 
 
 def get_discrete_stats(samples: dict):
-    discrete_sites = ['m_pe', 'm_sr1', 'm_sr2', 'm_rd']
+    discrete_sites = ['m_pe', 'm_sr1', 'm_sr2'] #, 'm_rd']
     return {key: {'mean': samples[key].astype(dtype='float').mean(axis=0).squeeze()} for key in discrete_sites}
 
 
