@@ -104,6 +104,7 @@ public class SVGenotype extends TwoPassVariantWalker {
     private VariantContextWriter vcfWriter;
     private SVGenotypeEngineFromModel genotypeEngine;
     private BufferedReader modelOutput;
+    private List<String> sampleList;
 
     public static List<String> FORMAT_FIELDS = Lists.newArrayList(
             SVCluster.DISCORDANT_PAIR_COUNT_ATTRIBUTE,
@@ -140,7 +141,6 @@ public class SVGenotype extends TwoPassVariantWalker {
 
         logger.info("Reading genotype model sample list...");
         final Path sampleListPath = Paths.get(modelDir.toString(), modelName + ".sample_ids.list");
-        final List<String> sampleList;
         try (final BufferedReader file = new BufferedReader(IOUtils.makeReaderMaybeGzipped(sampleListPath))) {
             sampleList = file.lines().collect(Collectors.toList());
         } catch (final IOException e) {
@@ -170,7 +170,7 @@ public class SVGenotype extends TwoPassVariantWalker {
         logger.info("Sampling completed!");
 
         logger.info("Reading output file...");
-        genotypeEngine = new SVGenotypeEngineFromModel(svType, sampleList);
+        genotypeEngine = new SVGenotypeEngineFromModel();
         try {
             final BufferedReader modelOutput = new BufferedReader(IOUtils.makeReaderMaybeGzipped(tempFile.toPath()));
             final String header = modelOutput.readLine();
@@ -183,7 +183,6 @@ public class SVGenotype extends TwoPassVariantWalker {
         pythonExecutor.terminate();
 
         vcfWriter = createVCFWriter(outputVcf);
-
         final VCFHeader header = getHeaderForVariants();
         SVGenotypeEngineFromModel.getVcfHeaderMetadata().stream().forEach(line -> header.addMetaDataLine(line));
         vcfWriter.writeHeader(header);
@@ -195,7 +194,7 @@ public class SVGenotype extends TwoPassVariantWalker {
                                 final ReferenceContext referenceContext,
                                 final FeatureContext featureContext) {
         try {
-            vcfWriter.add(genotypeEngine.genotypeFromModel(variant, modelOutput.readLine()));
+            vcfWriter.add(genotypeEngine.genotypeFromModel(variant, modelOutput.readLine(), sampleList));
         } catch (final IOException e) {
             throw new GATKException("Error reading model output file", e);
         }

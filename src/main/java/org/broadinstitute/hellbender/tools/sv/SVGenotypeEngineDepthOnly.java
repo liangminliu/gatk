@@ -1,13 +1,10 @@
 package org.broadinstitute.hellbender.tools.sv;
 
-import htsjdk.samtools.util.QualityUtil;
 import htsjdk.variant.variantcontext.Genotype;
 import htsjdk.variant.variantcontext.StructuralVariantType;
 import htsjdk.variant.variantcontext.VariantContext;
 import htsjdk.variant.variantcontext.VariantContextBuilder;
-import htsjdk.variant.vcf.VCFConstants;
-import htsjdk.variant.vcf.VCFHeaderLine;
-import htsjdk.variant.vcf.VCFStandardHeaderLines;
+import htsjdk.variant.vcf.*;
 import org.broadinstitute.hellbender.tools.copynumber.formats.records.CopyNumberPosteriorDistribution;
 import org.broadinstitute.hellbender.tools.copynumber.gcnv.IntegerCopyNumberState;
 import org.broadinstitute.hellbender.tools.spark.sv.utils.SVUtils;
@@ -22,19 +19,18 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static org.broadinstitute.hellbender.tools.sv.SVGenotypeEngine.buildGenotypeFromQuals;
+public class SVGenotypeEngineDepthOnly extends SVGenotypeEngine {
 
-public class SVGenotypeEngineDepthOnly {
-
-    public static List<VCFHeaderLine> getHeaderLines() {
+    public List<VCFHeaderLine> getHeaderLines() {
         final List<VCFHeaderLine> lines = new ArrayList<>();
         lines.add(VCFStandardHeaderLines.getFormatLine(VCFConstants.GENOTYPE_KEY, true));
         lines.add(VCFStandardHeaderLines.getFormatLine(VCFConstants.GENOTYPE_QUALITY_KEY, true));
         lines.add(VCFStandardHeaderLines.getFormatLine(VCFConstants.GENOTYPE_PL_KEY, true));
+        lines.add(new VCFFormatHeaderLine(SVGenotypeEngine.COPY_NUMBER_FIELD, 1, VCFHeaderLineType.Integer, "Copy number"));
         return lines;
     }
 
-    public static VariantContext genotypeDepthOnlyVariant(final VariantContext variant) {
+    public VariantContext genotypeVariant(final VariantContext variant) {
         final StructuralVariantType svType = variant.getStructuralVariantType();
         Utils.validate(SVGenotypeEngine.CNV_TYPES.contains(svType), "Variant " + variant.getID() + " is not a CNV");
         Utils.validate(SVGenotypeEngineFromModel.isDepthOnlyVariant(variant), "Variant " + variant.getID() + " is not depth-only");
@@ -46,7 +42,7 @@ public class SVGenotypeEngineDepthOnly {
         return builder.make();
     }
 
-    private static Genotype buildGenotype(final Genotype genotype, final StructuralVariantType svType) {
+    private Genotype buildGenotype(final Genotype genotype, final StructuralVariantType svType) {
         final CopyNumberPosteriorDistribution dist = getCopyNumberStatePosterior(genotype);
         final int neutralCopyState = SVGenotypeEngineFromModel.getNeutralCopyNumber(genotype);
 
@@ -54,29 +50,20 @@ public class SVGenotypeEngineDepthOnly {
         final double[] copyStatePosterior = IntStream.range(0, states.size())
                 .mapToDouble(i -> dist.getCopyNumberPosterior(states.get(i))).toArray();
         NaturalLogUtils.normalizeFromLogToLinearSpace(copyStatePosterior);
-        final double[] genotypePosterior = getGenotypePosterior(copyStatePosterior, neutralCopyState, svType);
-        return buildGenotypeFromPosterior(genotype, svType, genotypePosterior);
+        final double[] genotypeProbs = getGenotypePosterior(copyStatePosterior, neutralCopyState, svType);
+        return genotypeFromGivenProbs(genotype, svType, genotypeProbs);
     }
-
-    public static Genotype buildGenotypeFromPosterior(final Genotype genotype, final StructuralVariantType svType,
-                                         final double[] genotypePosterior) {
-        final int[] genotypeQuals = new int[genotypePosterior.length];
-        for (int i = 0; i < genotypePosterior.length; i++) {
-            genotypeQuals[i] =  QualityUtil.getPhredScoreFromErrorProbability(genotypePosterior[i]);
-        }
-        final int genotypeIndex = MathUtils.maxElementIndex(genotypePosterior);
-        final int genotypeQuality = MathUtils.secondSmallestMinusSmallest(genotypeQuals, 0);
-        return buildGenotypeFromQuals(genotype, svType, genotypeQuals, genotypeIndex, genotypeQuality);
-    }
-
 
     public static CopyNumberPosteriorDistribution getCopyNumberStatePosterior(final Genotype genotype) {
         Utils.validateArg(genotype.hasExtendedAttribute(SVGenotypeEngine.COPY_NUMBER_LOG_POSTERIORS_KEY),
                 "Variant does not have attribute " + SVGenotypeEngine.COPY_NUMBER_LOG_POSTERIORS_KEY);
-        final String[] posteriorsString = ((String) genotype.getExtendedAttribute(SVGenotypeEngine.COPY_NUMBER_LOG_POSTERIORS_KEY)).split(",");
-        final Map<IntegerCopyNumberState, Double> posteriorsMap = new HashMap<>(SVUtils.hashMapCapacity(posteriorsString.length));
-        for (int i = 0; i < posteriorsString.length; i++) {
-            posteriorsMap.put(new IntegerCopyNumberState(i), Double.parseDouble(posteriorsString[i]));
+        final double[] copyStateQuals = ((ArrayList<Integer>)genotype.getExtendedAttribute(SVGenotypeEngine.COPY_NUMBER_LOG_POSTERIORS_KEY))
+                .stream().mapToDouble(x -> NaturalLogUtils.qualToLogErrorProb(x)).toArray();
+        NaturalLogUtils.normalizeLog(copyStateQuals);
+
+        final Map<IntegerCopyNumberState, Double> posteriorsMap = new HashMap<>(SVUtils.hashMapCapacity(copyStateQuals.length));
+        for (int i = 0; i < copyStateQuals.length; i++) {
+            posteriorsMap.put(new IntegerCopyNumberState(i), copyStateQuals[i]);
         }
         return new CopyNumberPosteriorDistribution(posteriorsMap);
     }
@@ -91,7 +78,7 @@ public class SVGenotypeEngineDepthOnly {
         } else {
             throw new IllegalArgumentException("SV type was neither " + StructuralVariantType.DEL.name() + " nor " + StructuralVariantType.DUP.name());
         }
-        return genotypePosterior;
+        return MathUtils.normalizeSumToOne(genotypePosterior); // Fixes precision errors
     }
 
     private static double[] getDeletionGenotypePosterior(final int neutralCopyState, final double[] copyStatePosterior) {

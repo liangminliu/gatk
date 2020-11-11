@@ -27,6 +27,7 @@ import org.broadinstitute.hellbender.tools.copynumber.formats.records.LocatableC
 import org.broadinstitute.hellbender.tools.copynumber.gcnv.GermlineCNVIntervalVariantDecoder;
 import org.broadinstitute.hellbender.tools.copynumber.gcnv.IntegerCopyNumberState;
 import org.broadinstitute.hellbender.tools.spark.sv.utils.SVUtils;
+import org.broadinstitute.hellbender.utils.QualityUtils;
 import org.broadinstitute.hellbender.utils.SimpleInterval;
 import scala.Tuple2;
 
@@ -164,6 +165,7 @@ public final class SVCopyNumberPosteriors extends VariantWalker {
     private VariantContextWriter outputWriter;
     private String currentContig;
     private List<IntervalTree<Map<String,double[]>>> currentPosteriorsTreeList;
+    private SVGenotypeEngineDepthOnly depthOnlyGenotypeEngine;
     private SAMSequenceDictionary dictionary;
 
     @Override
@@ -172,10 +174,13 @@ public final class SVCopyNumberPosteriors extends VariantWalker {
         if (dictionary == null) {
             throw new UserException("Reference sequence dictionary required");
         }
+        if (genotypeDepthCalls) {
+            depthOnlyGenotypeEngine = new SVGenotypeEngineDepthOnly();
+        }
         posteriorsReaders = copyNumberPosteriorsFiles.stream().map(VCFFileReader::new).collect(Collectors.toList());
         samples = getHeaderForVariants().getSampleNamesInOrder();
         final Collection<CalledContigPloidyCollection> contigPloidyCollections = contigPloidyCallFiles.stream()
-                .map(SVCopyNumberPosteriors::readPloidyCalls)
+                .map(CalledContigPloidyCollection::new)
                 .collect(Collectors.toList());
         final Set<String> contigPloidySamples = contigPloidyCollections.stream()
                 .map(p -> p.getMetadata().getSampleName())
@@ -200,6 +205,12 @@ public final class SVCopyNumberPosteriors extends VariantWalker {
         currentPosteriorsTreeList = new ArrayList<>(copyNumberPosteriorsFiles.size());
         initializeDefaultCopyStates();
         loadIntervalTree();
+    }
+
+    @Override
+    public Object onTraversalSuccess() {
+        outputWriter.close();
+        return null;
     }
 
     private Set<String> getCNVSamples() {
@@ -245,12 +256,6 @@ public final class SVCopyNumberPosteriors extends VariantWalker {
                 .getCopyNumberPosteriorDistribution().getIntegerCopyNumberStateList();
     }
 
-    @Override
-    public Object onTraversalSuccess() {
-        outputWriter.close();
-        return null;
-    }
-
     private List<IntervalTree<Map<String,double[]>>> getCurrentPosteriorsTreeList() {
         return posteriorsReaders.stream().map(this::getCurrentPosteriorsTree).collect(Collectors.toList());
     }
@@ -293,10 +298,11 @@ public final class SVCopyNumberPosteriors extends VariantWalker {
 
         final Map<String, CopyNumberPosteriorDistribution> variantPosteriors = samples.stream()
                 .map(s -> new Tuple2<>(s, getCallPosterior(call, s)))
+                .filter(t -> t._2 != null)
                 .collect(Collectors.toMap(t -> t._1, t -> t._2));
         final VariantContext baseVariant = makeBaseVariant(variant, variantPosteriors);
         final VariantContext possiblyBndVariant = convertCnvWithoutDepthSupportToBnd(baseVariant);
-        final VariantContext possiblyGenotypedVariant = genotypeDepthCalls && SVGenotypeEngineFromModel.isDepthOnlyVariant(possiblyBndVariant) ? SVGenotypeEngineDepthOnly.genotypeDepthOnlyVariant(possiblyBndVariant) : possiblyBndVariant;
+        final VariantContext possiblyGenotypedVariant = genotypeDepthCalls && SVGenotypeEngineFromModel.isDepthOnlyVariant(possiblyBndVariant) ? depthOnlyGenotypeEngine.genotypeVariant(possiblyBndVariant) : possiblyBndVariant;
         outputWriter.add(possiblyGenotypedVariant);
     }
 
@@ -308,7 +314,7 @@ public final class SVCopyNumberPosteriors extends VariantWalker {
         headerInfo.add(new VCFFormatHeaderLine(SVGenotypeEngine.NEUTRAL_COPY_NUMBER_KEY, 1,
                 VCFHeaderLineType.Integer, "Neutral copy number"));
         if (genotypeDepthCalls) {
-            headerInfo.addAll(SVGenotypeEngineDepthOnly.getHeaderLines());
+            headerInfo.addAll(depthOnlyGenotypeEngine.getHeaderLines());
         }
         final VCFHeader vcfHeader = new VCFHeader(getHeaderForVariants());
         headerInfo.stream().forEach(line -> vcfHeader.addMetaDataLine(line));
@@ -342,12 +348,7 @@ public final class SVCopyNumberPosteriors extends VariantWalker {
         return contigPloidyMap.get(contig);
     }
 
-    private static CalledContigPloidyCollection readPloidyCalls(final File file) {
-        return new CalledContigPloidyCollection(file);
-    }
-
-    private CopyNumberPosteriorDistribution getCallPosterior(final SVCallRecord call,
-                                                             final String sample) {
+    private CopyNumberPosteriorDistribution getCallPosterior(final SVCallRecord call, final String sample) {
         if (!call.getType().equals(StructuralVariantType.DEL) && !call.getType().equals(StructuralVariantType.DUP)
                 && !call.getType().equals(StructuralVariantType.BND)) {
             return null;
@@ -445,13 +446,13 @@ public final class SVCopyNumberPosteriors extends VariantWalker {
     private VariantContext makeBaseVariant(final VariantContext variant,
                                            final Map<String, CopyNumberPosteriorDistribution> variantPosteriors) {
         final VariantContextBuilder variantBuilder = new VariantContextBuilder(variant);
-        final Map<String, List<Integer>> phredScaledPosteriors = getPhredScaledPosteriors(variantPosteriors);
+        final Map<String, List<Integer>> copyStateQuals = getCopyStateQuals(variantPosteriors);
 
         final List<Genotype> newGenotypes = new ArrayList<>(variant.getGenotypes().size());
         for (final Genotype genotype : variant.getGenotypes()) {
             final GenotypeBuilder genotypeBuilder = new GenotypeBuilder(genotype);
             final String sample = genotype.getSampleName();
-            genotypeBuilder.attribute(SVGenotypeEngine.COPY_NUMBER_LOG_POSTERIORS_KEY, phredScaledPosteriors.get(sample));
+            genotypeBuilder.attribute(SVGenotypeEngine.COPY_NUMBER_LOG_POSTERIORS_KEY, copyStateQuals.get(sample));
             genotypeBuilder.attribute(SVGenotypeEngine.NEUTRAL_COPY_NUMBER_KEY, getSamplePloidy(sample, variant.getContig()));
             newGenotypes.add(genotypeBuilder.make());
         }
@@ -459,17 +460,19 @@ public final class SVCopyNumberPosteriors extends VariantWalker {
         return variantBuilder.make();
     }
 
-    private Map<String, List<Integer>> getPhredScaledPosteriors(final Map<String, CopyNumberPosteriorDistribution> variantPosteriors) {
-        final Map<String, List<Integer>> phredScaledPosteriors = new HashMap<>(SVUtils.hashMapCapacity(variantPosteriors.size()));
+    private Map<String, List<Integer>> getCopyStateQuals(final Map<String, CopyNumberPosteriorDistribution> variantPosteriors) {
+        final Map<String, List<Integer>> copyStateQuals = new HashMap<>(SVUtils.hashMapCapacity(variantPosteriors.size()));
         for (final String sample : variantPosteriors.keySet()) {
             final CopyNumberPosteriorDistribution dist = variantPosteriors.get(sample);
-            final List<Integer> copyStatePosterior = dist.getIntegerCopyNumberStateList().stream()
-                    .map(s -> dist.getCopyNumberPosterior(s))
-                    .map(p -> Integer.valueOf((int)(-10. * p / FastMath.log(10.))))
+            final List<Integer> copyStatePhred = dist.getIntegerCopyNumberStateList().stream()
+                    .map(dist::getCopyNumberPosterior)
+                    .map(QualityUtils::logProbToPhred)
+                    .map(Math::round)
+                    .map(Long::intValue)
                     .collect(Collectors.toList());
-            phredScaledPosteriors.put(sample, copyStatePosterior);
+            copyStateQuals.put(sample, copyStatePhred);
         }
-        return phredScaledPosteriors;
+        return copyStateQuals;
     }
 
     private boolean cnvHasDepthSupport(final VariantContext variant) {

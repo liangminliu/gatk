@@ -1,6 +1,5 @@
 package org.broadinstitute.hellbender.tools.sv;
 
-import htsjdk.samtools.util.QualityUtil;
 import htsjdk.variant.variantcontext.Genotype;
 import htsjdk.variant.variantcontext.StructuralVariantType;
 import htsjdk.variant.variantcontext.VariantContext;
@@ -8,7 +7,6 @@ import htsjdk.variant.variantcontext.VariantContextBuilder;
 import htsjdk.variant.vcf.*;
 import org.broadinstitute.hellbender.exceptions.GATKException;
 import org.broadinstitute.hellbender.exceptions.UserException;
-import org.broadinstitute.hellbender.utils.MathUtils;
 import org.broadinstitute.hellbender.utils.Utils;
 
 import java.util.ArrayList;
@@ -20,22 +18,12 @@ public class SVGenotypeEngineFromModel extends SVGenotypeEngine {
     private static final String FIRST_DIM_SEPARATOR = ";";
     private static final String SECOND_DIM_SEPARATOR = ",";
 
-    private final StructuralVariantType svType;
-    private final List<String> sampleList;
-
-    public SVGenotypeEngineFromModel(final StructuralVariantType svType, final List<String> sampleList) {
-        Utils.nonNull(svType);
-        Utils.nonNull(sampleList);
-        this.svType = svType;
-        this.sampleList = sampleList;
-    }
-
     public static int getNeutralCopyNumber(final Genotype genotype) {
         Utils.validateArg(genotype.hasExtendedAttribute(SVGenotypeEngine.NEUTRAL_COPY_NUMBER_KEY),
                 "Genotype missing format field " + SVGenotypeEngine.NEUTRAL_COPY_NUMBER_KEY
                         + " for sample " + genotype.getSampleName());
         Utils.nonNull(genotype);
-        return Integer.valueOf(((String)genotype.getExtendedAttribute(SVGenotypeEngine.NEUTRAL_COPY_NUMBER_KEY)));
+        return (Integer) genotype.getExtendedAttribute(SVGenotypeEngine.NEUTRAL_COPY_NUMBER_KEY);
     }
 
     public static boolean isDepthOnlyVariant(final VariantContext variant) {
@@ -63,17 +51,16 @@ public class SVGenotypeEngineFromModel extends SVGenotypeEngine {
         return lines;
     }
 
-    public VariantContext genotypeFromModel(final VariantContext variant, final String modelOutputLine) {
+    public VariantContext genotypeFromModel(final VariantContext variant, final String modelOutputLine, final List<String> modelSampleList) {
         Utils.nonNull(variant);
         Utils.nonNull(modelOutputLine);
 
-        final VariantOutput modelOutput = parseVariantOutput(modelOutputLine);
+        final VariantOutput modelOutput = parseVariantOutput(modelOutputLine, modelSampleList.size());
         if (!modelOutput.getId().equals(variant.getID())) {
             throw new UserException.BadInput("Model and VCF record IDs did not match: " + modelOutput.getId() + ", " + variant.getID());
         }
 
         final VariantContextBuilder builder = new VariantContextBuilder(variant);
-
         builder.attribute(SVGenotypeEngine.PAIRED_END_PROB_FIELD, modelOutput.getP_m_pe());
         builder.attribute(SVGenotypeEngine.FIRST_SPLIT_READ_PROB_FIELD, modelOutput.getP_m_sr1());
         builder.attribute(SVGenotypeEngine.SECOND_SPLIT_READ_PROB_FIELD, modelOutput.getP_m_sr2());
@@ -84,40 +71,28 @@ public class SVGenotypeEngineFromModel extends SVGenotypeEngine {
         builder.attribute(SVGenotypeEngine.FIRST_SPLIT_READ_MEAN_BIAS_FIELD, modelOutput.getPhi_sr1());
         builder.attribute(SVGenotypeEngine.SECOND_SPLIT_READ_MEAN_BIAS_FIELD, modelOutput.getPhi_sr2());
 
-        final int numSamples = sampleList.size();
+        final int numSamples = modelSampleList.size();
+        final StructuralVariantType svType = variant.getStructuralVariantType();
         final List<Genotype> newGenotypes = new ArrayList<>(variant.getNSamples());
         for (int sampleIndex = 0; sampleIndex < numSamples; sampleIndex++) {
-            final String sample = sampleList.get(sampleIndex);
+            final String sample = modelSampleList.get(sampleIndex);
             final Genotype genotype = variant.getGenotype(sample);
             if (!sample.equals(genotype.getSampleName())) {
                 throw new UserException.BadInput("Model and VCF samples do not match");
             }
             final double[] genotypeProbs = modelOutput.getSampleFrequencies(sampleIndex);
-            newGenotypes.add(genotypeFromProbs(genotype, genotypeProbs));
+            newGenotypes.add(genotypeFromGivenProbs(genotype, svType, genotypeProbs));
         }
         builder.genotypes(newGenotypes);
-
         final double log10ProbNoVariant = SVGenotypeEngine.calculateLog10PNoError(newGenotypes);
         builder.log10PError(log10ProbNoVariant);
         return builder.make();
     }
 
-    private Genotype genotypeFromProbs(final Genotype genotype, final double[] genotypeProbs) {
-        final int numStates = genotypeProbs.length;
-        final int[] genotypeQuals = new int[numStates];
-        for (int i = 0; i < numStates; i++) {
-            genotypeQuals[i] = QualityUtil.getPhredScoreFromErrorProbability(genotypeProbs[i]);
-        }
-        final int genotypeIndex = MathUtils.maxElementIndex(genotypeProbs);
-        final int genotypeQuality = MathUtils.secondSmallestMinusSmallest(genotypeQuals, 0);
-        return buildGenotypeFromQuals(genotype, svType, genotypeQuals, genotypeIndex, genotypeQuality);
-    }
-
-    public VariantOutput parseVariantOutput(final String line) {
+    public static VariantOutput parseVariantOutput(final String line, final int numSamples) {
         final String[] values = line.trim().split(COLUMN_SEPARATOR);
         final String id = values[0];
         final String[] freqStringArray = values[1].split(FIRST_DIM_SEPARATOR);
-        final int numSamples = sampleList.size();
         if (freqStringArray.length != numSamples) {
             throw new UserException.BadInput("Genotype frequencies did not match sample list size");
         }
@@ -142,7 +117,6 @@ public class SVGenotypeEngineFromModel extends SVGenotypeEngine {
         final double phi_sr2 = Double.parseDouble(values[10]);
 
         return new VariantOutput(
-                sampleList,
                 id,
                 freqList,
                 p_m_pe,
@@ -158,7 +132,6 @@ public class SVGenotypeEngineFromModel extends SVGenotypeEngine {
     }
 
     private static final class VariantOutput {
-        private final List<String> sampleList;
         private final String id;
         private final List<double[]> frequencies;
         private final double p_m_pe;
@@ -171,8 +144,7 @@ public class SVGenotypeEngineFromModel extends SVGenotypeEngine {
         private final double phi_sr1;
         private final double phi_sr2;
 
-        public VariantOutput(final List<String> sampleList,
-                             final String id,
+        public VariantOutput(final String id,
                              final List<double[]> frequencies,
                              final double p_m_pe,
                              final double p_m_sr1,
@@ -183,7 +155,6 @@ public class SVGenotypeEngineFromModel extends SVGenotypeEngine {
                              final double phi_pe,
                              final double phi_sr1,
                              final double phi_sr2) {
-            this.sampleList = sampleList;
             this.id = id;
             this.frequencies = frequencies;
             this.p_m_pe = p_m_pe;
@@ -212,7 +183,7 @@ public class SVGenotypeEngineFromModel extends SVGenotypeEngine {
         }
 
         public double[] getSampleFrequencies(final int sampleIndex) {
-            Utils.validateArg(sampleIndex >= 0 && sampleIndex < sampleList.size(), "Invalid sample index: " + sampleIndex);
+            Utils.validateArg(sampleIndex >= 0 && sampleIndex < frequencies.size(), "Invalid sample index: " + sampleIndex);
             return frequencies.get(sampleIndex);
         }
 
