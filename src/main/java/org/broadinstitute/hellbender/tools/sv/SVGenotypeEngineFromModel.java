@@ -8,6 +8,7 @@ import htsjdk.variant.vcf.*;
 import org.broadinstitute.hellbender.exceptions.GATKException;
 import org.broadinstitute.hellbender.exceptions.UserException;
 import org.broadinstitute.hellbender.utils.Utils;
+import org.broadinstitute.hellbender.utils.variant.VariantContextGetters;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -23,7 +24,7 @@ public class SVGenotypeEngineFromModel extends SVGenotypeEngine {
                 "Genotype missing format field " + SVGenotypeEngine.NEUTRAL_COPY_NUMBER_KEY
                         + " for sample " + genotype.getSampleName());
         Utils.nonNull(genotype);
-        return Integer.valueOf(genotype.getExtendedAttribute(SVGenotypeEngine.NEUTRAL_COPY_NUMBER_KEY).toString());
+        return VariantContextGetters.getAttributeAsInt(genotype, SVGenotypeEngine.NEUTRAL_COPY_NUMBER_KEY, 0);
     }
 
     public static boolean isDepthOnlyVariant(final VariantContext variant) {

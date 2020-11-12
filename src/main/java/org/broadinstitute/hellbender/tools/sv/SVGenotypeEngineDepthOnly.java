@@ -11,6 +11,7 @@ import org.broadinstitute.hellbender.tools.spark.sv.utils.SVUtils;
 import org.broadinstitute.hellbender.utils.MathUtils;
 import org.broadinstitute.hellbender.utils.NaturalLogUtils;
 import org.broadinstitute.hellbender.utils.Utils;
+import org.broadinstitute.hellbender.utils.variant.VariantContextGetters;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -57,8 +58,8 @@ public class SVGenotypeEngineDepthOnly extends SVGenotypeEngine {
     public static CopyNumberPosteriorDistribution getCopyNumberStatePosterior(final Genotype genotype) {
         Utils.validateArg(genotype.hasExtendedAttribute(SVGenotypeEngine.COPY_NUMBER_LOG_POSTERIORS_KEY),
                 "Variant does not have attribute " + SVGenotypeEngine.COPY_NUMBER_LOG_POSTERIORS_KEY);
-        final double[] copyStateQuals = ((ArrayList<Integer>)genotype.getExtendedAttribute(SVGenotypeEngine.COPY_NUMBER_LOG_POSTERIORS_KEY))
-                .stream().mapToDouble(x -> NaturalLogUtils.qualToLogErrorProb(x)).toArray();
+        final int[] copyStateQualsRaw = VariantContextGetters.getAttributeAsIntArray(genotype, SVGenotypeEngine.COPY_NUMBER_LOG_POSTERIORS_KEY, null, 0);
+        final double[] copyStateQuals = IntStream.of(copyStateQualsRaw).mapToDouble(x -> NaturalLogUtils.qualToLogErrorProb(x)).toArray();
         NaturalLogUtils.normalizeLog(copyStateQuals);
 
         final Map<IntegerCopyNumberState, Double> posteriorsMap = new HashMap<>(SVUtils.hashMapCapacity(copyStateQuals.length));
