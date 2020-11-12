@@ -199,7 +199,11 @@ class SVGenotyperPyroModel(object):
                 locs_sr1 = (1. - m_sr1.unsqueeze(-1)) * m0_locs_sr1 + m_sr1.unsqueeze(-1) * m1_locs_sr1
                 locs_sr2 = (1. - m_sr2.unsqueeze(-1)) * m0_locs_sr2 + m_sr2.unsqueeze(-1) * m1_locs_sr2
 
-                z = pyro.sample('z', dist.Categorical(rd_gt_prob_t))
+                if self.svtype == SVTypes.DEL or self.svtype == SVTypes.DUP:
+                    z_dist = rd_gt_prob_t
+                else:
+                    z_dist = one_t.expand(n_variants, n_samples, self.k) / self.k
+                z = pyro.sample('z', dist.Categorical(z_dist))
 
                 #z_weights = m_rd.unsqueeze(-1) * rd_gt_prob_t + (1. - m_rd.unsqueeze(-1)) * z_prior
                 #z_weights = one_t.expand(self.k) / self.k

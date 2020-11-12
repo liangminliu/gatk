@@ -23,7 +23,7 @@ public class SVGenotypeEngineFromModel extends SVGenotypeEngine {
                 "Genotype missing format field " + SVGenotypeEngine.NEUTRAL_COPY_NUMBER_KEY
                         + " for sample " + genotype.getSampleName());
         Utils.nonNull(genotype);
-        return (Integer) genotype.getExtendedAttribute(SVGenotypeEngine.NEUTRAL_COPY_NUMBER_KEY);
+        return Integer.valueOf(genotype.getExtendedAttribute(SVGenotypeEngine.NEUTRAL_COPY_NUMBER_KEY).toString());
     }
 
     public static boolean isDepthOnlyVariant(final VariantContext variant) {

@@ -60,20 +60,57 @@ public class SVGenotypeEngine {
 
     protected Genotype buildGenotypeFromGivenLikelihoods(final Genotype genotype, final StructuralVariantType svType,
                                                          final double[] genotypeLikelihoods) {
-        final int genotypeIndex = MathUtils.minElementIndex(genotypeLikelihoods);
-        final double genotypeQuality = MathUtils.secondSmallestMinusSmallest(genotypeLikelihoods, 0);
-        return buildGenotypeFromQual(genotype, svType, genotypeLikelihoods, genotypeIndex, genotypeQuality);
+
+        // Resize array to be consistent with neutral copy number, if necessary
+        final int neutralCopyState = SVGenotypeEngineFromModel.getNeutralCopyNumber(genotype);
+        final int maxGenotypeStates = getMaxPossibleGenotypeStates(neutralCopyState, svType);
+        final double[] resizedLikelihoods;
+        if (genotypeLikelihoods.length > maxGenotypeStates) {
+            resizedLikelihoods = resizeGenotypeLikelihoods(genotypeLikelihoods, maxGenotypeStates);
+        } else {
+            resizedLikelihoods = genotypeLikelihoods;
+        }
+
+        final int genotypeIndex = MathUtils.minElementIndex(resizedLikelihoods);
+        final double genotypeQuality = neutralCopyState == 0 ? Integer.MAX_VALUE : MathUtils.secondSmallestMinusSmallest(resizedLikelihoods, 0);
+        return buildGenotypeFromGivenQual(genotype, svType, resizedLikelihoods, genotypeIndex, genotypeQuality, neutralCopyState);
     }
 
-    protected static Genotype buildGenotypeFromQual(final Genotype genotype, final StructuralVariantType svType,
-                                                               final double[] genotypeLikelihoods, final int genotypeIndex,
-                                                               final double genotypeQuality) {
+    private static double[] resizeGenotypeLikelihoods(final double[] genotypeLikelihoods, final int newSize) {
+        Utils.validateArg(newSize < genotypeLikelihoods.length, "New size must be smaller");
+        final double[] resizedLikelihoods = new double[newSize];
+        final int maxIndex = newSize - 1;
+        for (int i = 0; i < maxIndex; i++) {
+            resizedLikelihoods[i] = genotypeLikelihoods[i];
+        }
+        final double[] extraLikelihoods = new double[genotypeLikelihoods.length - maxIndex];
+        for (int i = 0; i < extraLikelihoods.length; i++) {
+            extraLikelihoods[i] = genotypeLikelihoods[maxIndex + i];
+        }
+        resizedLikelihoods[maxIndex] = QualityUtils.phredSum(extraLikelihoods);
+        return resizedLikelihoods;
+    }
+
+    private static int getMaxPossibleGenotypeStates(final int neutralCopyState, final StructuralVariantType svType) {
+        if (svType.equals(StructuralVariantType.DEL)
+                || svType.equals(StructuralVariantType.INS)
+                || svType.equals(StructuralVariantType.INV)
+                || svType.equals(StructuralVariantType.BND)) {
+            return neutralCopyState + 1;
+        } else if (svType.equals(StructuralVariantType.DUP)) {
+            return neutralCopyState == 0 ? 1 : Integer.MAX_VALUE;
+        }
+        throw new UserException.BadInput("Unsupported SVTYPE: " + svType);
+    }
+
+    private static Genotype buildGenotypeFromGivenQual(final Genotype genotype, final StructuralVariantType svType,
+                                                       final double[] genotypeLikelihoods, final int genotypeIndex,
+                                                       final double genotypeQuality, final int neutralCopyState) {
         final Allele altAllele = Allele.create("<" + svType.name() + ">", false);
         final Allele refAllele = DEFAULT_REF_ALLELE;
-        final int neutralCopyState = SVGenotypeEngineFromModel.getNeutralCopyNumber(genotype);
         // TODO: multi-allelic sites
         final List<Allele> alleles = getAlleles(svType, genotypeIndex, neutralCopyState, refAllele, altAllele);
-        final int copyNumber = getGenotypeCopyNumber(svType, genotypeIndex, neutralCopyState);
+        final Integer copyNumber = getGenotypeCopyNumber(svType, genotypeIndex, neutralCopyState);
         final int genotypeQualityInt = (int) Math.round(genotypeQuality);
         final int[] genotypeLikelihoodsInt = DoubleStream.of(genotypeLikelihoods).mapToInt(x -> (int) Math.round(x)).toArray();
 
@@ -91,9 +128,9 @@ public class SVGenotypeEngine {
                 || svType.equals(StructuralVariantType.BND)) {
             return null;
         } else if (svType.equals(StructuralVariantType.DEL)) {
-            return neutralCopyState - genotypeIndex;
+            return Math.max(neutralCopyState - genotypeIndex, 0);
         } else if (svType.equals(StructuralVariantType.DUP)) {
-            return neutralCopyState + genotypeIndex;
+            return neutralCopyState == 0 ? 0 : neutralCopyState + genotypeIndex;
         }
         throw new UserException.BadInput("Unsupported SVTYPE: " + svType);
     }

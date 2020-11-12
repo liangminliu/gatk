@@ -172,7 +172,7 @@ public class SVGenotype extends TwoPassVariantWalker {
         logger.info("Reading output file...");
         genotypeEngine = new SVGenotypeEngineFromModel();
         try {
-            final BufferedReader modelOutput = new BufferedReader(IOUtils.makeReaderMaybeGzipped(tempFile.toPath()));
+            modelOutput = new BufferedReader(IOUtils.makeReaderMaybeGzipped(tempFile.toPath()));
             final String header = modelOutput.readLine();
             if (!header.startsWith("#")) {
                 throw new RuntimeException("Expected Python output file header starting with #");

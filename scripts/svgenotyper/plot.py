@@ -134,7 +134,10 @@ def plot_sites(vcf_path: str, mean_coverage_path: str, vids: list = None, out_di
         sr2 = np.asarray([record.samples[sample]['SR2'] for sample in samples_list]) / mean_cov
         pl = np.asarray([record.samples[sample]['PL'] for sample in samples_list])
         gq = np.asarray([record.samples[sample]['GQ'] for sample in samples_list])
-        cnlp = np.asarray([record.samples[sample]['CNLP'] for sample in samples_list])
+        if record.info['SVTYPE'] == 'DEL' or record.info['SVTYPE'] == 'DUP':
+            cnlp = np.asarray([record.samples[sample]['CNLP'] for sample in samples_list])
+        else:
+            cnlp = None
 
         pf, axes = plt.subplots(rows, cols, figsize=(figure_width, figure_height))
 
@@ -161,15 +164,16 @@ def plot_sites(vcf_path: str, mean_coverage_path: str, vids: list = None, out_di
         _plot_counts(axes[1, 1], x=sr1, y=gq, xlabel='Norm SR1', ylabel='GQ', xmax=count_lim, ymax=gq_lim)
         _plot_counts(axes[1, 2], x=sr2, y=gq, xlabel='Norm SR2', ylabel='GQ', xmax=count_lim, ymax=gq_lim)
 
-        cnlp_max = 20
-        cnlp[cnlp > cnlp_max] = cnlp_max
-        cnlp_lim = cnlp_max + 1.
-        cnlp_lb = -1
-        _plot_counts(axes[2, 0], x=cnlp[..., 0], y=pl, xlabel='LP-CN=0', ylabel='PL', xmin=cnlp_lb, xmax=cnlp_lim, ymax=pl_lim)
-        _plot_counts(axes[2, 1], x=cnlp[..., 1], y=pl, xlabel='LP-CN=1', ylabel='PL', xmin=cnlp_lb, xmax=cnlp_lim, ymax=pl_lim)
-        _plot_counts(axes[2, 2], x=cnlp[..., 2], y=pl, xlabel='LP-CN=2', ylabel='PL', xmin=cnlp_lb, xmax=cnlp_lim, ymax=pl_lim)
-        _plot_counts(axes[2, 3], x=cnlp[..., 3], y=pl, xlabel='LP-CN=3', ylabel='PL', xmin=cnlp_lb, xmax=cnlp_lim, ymax=pl_lim)
-        _plot_counts(axes[2, 4], x=cnlp[..., 4], y=pl, xlabel='LP-CN=4', ylabel='PL', xmin=cnlp_lb, xmax=cnlp_lim, ymax=pl_lim)
+        if cnlp is not None:
+            cnlp_max = 20
+            cnlp[cnlp > cnlp_max] = cnlp_max
+            cnlp_lim = cnlp_max + 1.
+            cnlp_lb = -1
+            _plot_counts(axes[2, 0], x=cnlp[..., 0], y=pl, xlabel='LP-CN=0', ylabel='PL', xmin=cnlp_lb, xmax=cnlp_lim, ymax=pl_lim)
+            _plot_counts(axes[2, 1], x=cnlp[..., 1], y=pl, xlabel='LP-CN=1', ylabel='PL', xmin=cnlp_lb, xmax=cnlp_lim, ymax=pl_lim)
+            _plot_counts(axes[2, 2], x=cnlp[..., 2], y=pl, xlabel='LP-CN=2', ylabel='PL', xmin=cnlp_lb, xmax=cnlp_lim, ymax=pl_lim)
+            _plot_counts(axes[2, 3], x=cnlp[..., 3], y=pl, xlabel='LP-CN=3', ylabel='PL', xmin=cnlp_lb, xmax=cnlp_lim, ymax=pl_lim)
+            _plot_counts(axes[2, 4], x=cnlp[..., 4], y=pl, xlabel='LP-CN=4', ylabel='PL', xmin=cnlp_lb, xmax=cnlp_lim, ymax=pl_lim)
 
         pf.delaxes(axes[0, 3])
         pf.delaxes(axes[0, 4])
@@ -231,7 +235,10 @@ def plot_sites_hist(vcf_path: str, mean_coverage_path: str, vids: list = None, o
         sr2 = np.asarray([record.samples[sample]['SR2'] for sample in samples_list]) / mean_cov
         pl = np.asarray([record.samples[sample]['PL'] for sample in samples_list])
         gq = np.asarray([record.samples[sample]['GQ'] for sample in samples_list])
-        cnlp = np.asarray([record.samples[sample]['CNLP'] for sample in samples_list])
+        if record.info['SVTYPE'] == 'DEL' or record.info['SVTYPE'] == 'DUP':
+            cnlp = np.asarray([record.samples[sample]['CNLP'] for sample in samples_list])
+        else:
+            cnlp = None
 
         pf, axes = plt.subplots(rows, cols, figsize=(figure_width, figure_height))
 
@@ -261,16 +268,17 @@ def plot_sites_hist(vcf_path: str, mean_coverage_path: str, vids: list = None, o
         _plot_counts(axes[1, 2], x=pl[..., 2], bins=bins, xlabel='PL2')
         _plot_counts(axes[1, 3], x=gq, bins=bins, xlabel='GQ')
 
-        cnlp_max = 20
-        cnlp[cnlp > cnlp_max] = cnlp_max
-        cnlp_lim = cnlp_max + 1.
-        cnlp_lb = -1
-        bins = np.arange(start=0, stop=cnlp_lim, step=1)
-        _plot_counts(axes[2, 0], x=cnlp[..., 0], bins=bins, xlabel='LP-CN=0')
-        _plot_counts(axes[2, 1], x=cnlp[..., 1], bins=bins, xlabel='LP-CN=1')
-        _plot_counts(axes[2, 2], x=cnlp[..., 2], bins=bins, xlabel='LP-CN=2')
-        _plot_counts(axes[2, 3], x=cnlp[..., 3], bins=bins, xlabel='LP-CN=3')
-        _plot_counts(axes[2, 4], x=cnlp[..., 4], bins=bins, xlabel='LP-CN=4')
+        if cnlp is not None:
+            cnlp_max = 20
+            cnlp[cnlp > cnlp_max] = cnlp_max
+            cnlp_lim = cnlp_max + 1.
+            cnlp_lb = -1
+            bins = np.arange(start=0, stop=cnlp_lim, step=1)
+            _plot_counts(axes[2, 0], x=cnlp[..., 0], bins=bins, xlabel='LP-CN=0')
+            _plot_counts(axes[2, 1], x=cnlp[..., 1], bins=bins, xlabel='LP-CN=1')
+            _plot_counts(axes[2, 2], x=cnlp[..., 2], bins=bins, xlabel='LP-CN=2')
+            _plot_counts(axes[2, 3], x=cnlp[..., 3], bins=bins, xlabel='LP-CN=3')
+            _plot_counts(axes[2, 4], x=cnlp[..., 4], bins=bins, xlabel='LP-CN=4')
 
         pf.delaxes(axes[0, 3])
 

@@ -66,10 +66,11 @@ def compute_preprocessed_tensors(num_states: int,
         del filled_zeros, filled_index, probs_list
     else:
         # we only use CNLP values from the VCF for CNVs
-        rd_gt_prob_t = torch.ones((cn_prob_t.shape[0], cn_prob_t.shape[1], num_states), device=device, dtype=tensor_dtype) / float(num_states)
+        rd_gt_prob_t = None
 
     # Dilute and normalize
-    rd_gt_prob_t += depth_dilution_factor
-    rd_gt_prob_t = rd_gt_prob_t / rd_gt_prob_t.sum(dim=-1).unsqueeze(-1)
+    if rd_gt_prob_t is not None:
+        rd_gt_prob_t += depth_dilution_factor
+        rd_gt_prob_t = rd_gt_prob_t / rd_gt_prob_t.sum(dim=-1).unsqueeze(-1)
 
     return pe_t, sr1_t, sr2_t, depth_t, rd_gt_prob_t
