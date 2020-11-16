@@ -3,6 +3,7 @@ package org.broadinstitute.hellbender.utils.codecs;
 import com.google.common.base.Splitter;
 import htsjdk.samtools.util.IOUtil;
 import htsjdk.tribble.AsciiFeatureCodec;
+import htsjdk.tribble.index.tabix.TabixFormat;
 import htsjdk.tribble.readers.LineIterator;
 import org.broadinstitute.hellbender.exceptions.UserException;
 import org.broadinstitute.hellbender.tools.sv.DepthEvidence;
@@ -17,6 +18,11 @@ public class DepthEvidenceCodec extends AsciiFeatureCodec<DepthEvidence> {
 
     public DepthEvidenceCodec() {
         super(DepthEvidence.class);
+    }
+
+    @Override
+    public TabixFormat getTabixFormat() {
+        return new TabixFormat(TabixFormat.ZERO_BASED, 1, 2, 0, '#', 1);
     }
 
     @Override

@@ -1,10 +1,8 @@
 package org.broadinstitute.hellbender.tools.sv;
 
-import htsjdk.samtools.util.BlockCompressedOutputStream;
 import htsjdk.samtools.util.IOUtil;
 import htsjdk.tribble.Feature;
-import htsjdk.tribble.index.IndexCreator;
-import htsjdk.tribble.index.tabix.TabixIndexCreator;
+import htsjdk.tribble.FeatureCodec;
 import org.broadinstitute.barclay.argparser.Argument;
 import org.broadinstitute.barclay.argparser.CommandLineProgramProperties;
 import org.broadinstitute.barclay.argparser.ExperimentalFeature;
@@ -13,10 +11,9 @@ import org.broadinstitute.hellbender.cmdline.StandardArgumentDefinitions;
 import org.broadinstitute.hellbender.cmdline.programgroups.StructuralVariantDiscoveryProgramGroup;
 import org.broadinstitute.hellbender.engine.*;
 import org.broadinstitute.hellbender.exceptions.GATKException;
-import org.broadinstitute.hellbender.exceptions.UserException;
-
-import java.io.IOException;
-import java.io.PrintStream;
+import org.broadinstitute.hellbender.utils.io.FeatureOutputStream;
+import org.broadinstitute.hellbender.utils.io.TabixIndexedFeatureOutputStream;
+import org.broadinstitute.hellbender.utils.io.UncompressedFeatureOutputStream;
 
 /**
  * Prints SV evidence records. Can be used with -L to retrieve records on a set of intervals.
@@ -60,7 +57,6 @@ public final class PrintSVEvidence extends FeatureWalker<Feature> {
 
     public static final String EVIDENCE_FILE_NAME = "evidence-file";
     public static final String COMPRESSION_LEVEL_NAME = "compression-level";
-    public static final String SKIP_HEADER_NAME = "skip-header";
 
     @Argument(
             doc = "Input file URI with extension '.SR.txt', '.PE.txt', '.BAF.txt', or '.RD.txt' (may be gzipped).",
@@ -79,16 +75,9 @@ public final class PrintSVEvidence extends FeatureWalker<Feature> {
             doc = "Output compression level",
             fullName = COMPRESSION_LEVEL_NAME
     )
-    private int compressionLevel = 5;
+    private int compressionLevel = 4;
 
-    @Argument(
-            doc = "Skip printing the header",
-            fullName = SKIP_HEADER_NAME
-    )
-    private boolean skipHeader = false;
-
-    private PrintStream printStream;
-    private IndexCreator indexCreator;
+    private FeatureOutputStream outputStream;
 
     @Override
     protected boolean isAcceptableFeatureType(final Class<? extends Feature> featureType) {
@@ -103,31 +92,27 @@ public final class PrintSVEvidence extends FeatureWalker<Feature> {
 
     @Override
     public void onTraversalStart() {
+        initializeOutput();
+        writeHeader();
+    }
+
+    private void initializeOutput() {
         if (IOUtil.hasBlockCompressedExtension(outputFile.toPath())) {
-            printStream = new PrintStream(new BlockCompressedOutputStream(outputFile.toString(), compressionLevel));
-            indexCreator = new TabixIndexCreator(getBestAvailableSequenceDictionary(), )
+            final FeatureCodec codec = FeatureManager.getCodecForFile(outputFile.toPath());
+            outputStream = new TabixIndexedFeatureOutputStream(outputFile, codec, getBestAvailableSequenceDictionary(), compressionLevel);
         } else {
-            try {
-                printStream = new PrintStream(outputFile.toString());
-            } catch (final IOException e) {
-                throw new UserException.CouldNotCreateOutputFile(outputFile, "Could not create output file", e);
-            }
-        }
-        if (!skipHeader) {
-            doHeader();
+            outputStream = new UncompressedFeatureOutputStream(outputFile, getBestAvailableSequenceDictionary());
         }
     }
 
-    private void doHeader() {
+    private void writeHeader() {
         final Object header = getDrivingFeaturesHeader();
         if (header != null) {
             if (header instanceof String) {
-                printStream.println((String) header);
+                outputStream.writeHeader((String) header);
             } else {
                 throw new GATKException.ShouldNeverReachHereException("Expected header object of type " + String.class.getSimpleName());
             }
-        } else {
-            logger.info("Header not found");
         }
     }
 
@@ -136,12 +121,13 @@ public final class PrintSVEvidence extends FeatureWalker<Feature> {
                       final ReadsContext readsContext,
                       final ReferenceContext referenceContext,
                       final FeatureContext featureContext) {
-        printStream.println(feature.toString());
+        // All evidence data types implement an encoding with toString()
+        outputStream.add(feature, f -> f.toString());
     }
 
     @Override
     public Object onTraversalSuccess() {
-        printStream.close();
+        outputStream.close();
         return null;
     }
 }

@@ -14,7 +14,7 @@ import org.broadinstitute.hellbender.utils.io.IOUtils;
  * of Features.
 
  * Subclasses must implement the {@link #apply(Feature, ReadsContext, ReferenceContext, FeatureContext)} method to process each Feature,
- * as well as {@link #isAcceptableFeatureType(Class)} and {@link #getDrivingFeatureFile()}, and may optionally implement
+ * as well as {@link #isAcceptableFeatureType(Class)} and {@link #getDrivingFeaturesPath()}, and may optionally implement
  * {@link #onTraversalStart()}, {@link #onTraversalSuccess()}, and/or {@link #closeTool()}.
  *
  * @param <F> the driving feature type.

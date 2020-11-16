@@ -3,6 +3,7 @@ package org.broadinstitute.hellbender.utils.codecs;
 import com.google.common.base.Splitter;
 import htsjdk.samtools.util.IOUtil;
 import htsjdk.tribble.AsciiFeatureCodec;
+import htsjdk.tribble.index.tabix.TabixFormat;
 import htsjdk.tribble.readers.LineIterator;
 import org.broadinstitute.hellbender.tools.sv.DiscordantPairEvidence;
 
@@ -16,6 +17,11 @@ public class DiscordantPairEvidenceCodec extends AsciiFeatureCodec<DiscordantPai
 
     public DiscordantPairEvidenceCodec() {
         super(DiscordantPairEvidence.class);
+    }
+
+    @Override
+    public TabixFormat getTabixFormat() {
+        return new TabixFormat(TabixFormat.ZERO_BASED, 1, 2, 0, '#', 0);
     }
 
     @Override
