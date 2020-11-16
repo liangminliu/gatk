@@ -1,6 +1,10 @@
 package org.broadinstitute.hellbender.tools.sv;
 
+import htsjdk.samtools.util.BlockCompressedOutputStream;
+import htsjdk.samtools.util.IOUtil;
 import htsjdk.tribble.Feature;
+import htsjdk.tribble.index.IndexCreator;
+import htsjdk.tribble.index.tabix.TabixIndexCreator;
 import org.broadinstitute.barclay.argparser.Argument;
 import org.broadinstitute.barclay.argparser.CommandLineProgramProperties;
 import org.broadinstitute.barclay.argparser.ExperimentalFeature;
@@ -10,9 +14,7 @@ import org.broadinstitute.hellbender.cmdline.programgroups.StructuralVariantDisc
 import org.broadinstitute.hellbender.engine.*;
 import org.broadinstitute.hellbender.exceptions.GATKException;
 import org.broadinstitute.hellbender.exceptions.UserException;
-import org.broadinstitute.hellbender.utils.io.IOUtils;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
 
@@ -57,6 +59,7 @@ import java.io.PrintStream;
 public final class PrintSVEvidence extends FeatureWalker<Feature> {
 
     public static final String EVIDENCE_FILE_NAME = "evidence-file";
+    public static final String COMPRESSION_LEVEL_NAME = "compression-level";
     public static final String SKIP_HEADER_NAME = "skip-header";
 
     @Argument(
@@ -70,7 +73,13 @@ public final class PrintSVEvidence extends FeatureWalker<Feature> {
             fullName = StandardArgumentDefinitions.OUTPUT_LONG_NAME,
             shortName = StandardArgumentDefinitions.OUTPUT_SHORT_NAME
     )
-    private File outputFile;
+    private GATKPath outputFile;
+
+    @Argument(
+            doc = "Output compression level",
+            fullName = COMPRESSION_LEVEL_NAME
+    )
+    private int compressionLevel = 5;
 
     @Argument(
             doc = "Skip printing the header",
@@ -79,6 +88,7 @@ public final class PrintSVEvidence extends FeatureWalker<Feature> {
     private boolean skipHeader = false;
 
     private PrintStream printStream;
+    private IndexCreator indexCreator;
 
     @Override
     protected boolean isAcceptableFeatureType(final Class<? extends Feature> featureType) {
@@ -93,11 +103,15 @@ public final class PrintSVEvidence extends FeatureWalker<Feature> {
 
     @Override
     public void onTraversalStart() {
-        try {
-            printStream = IOUtils.makePrintStreamMaybeGzipped(outputFile);
-        }
-        catch(IOException e) {
-            throw new UserException.CouldNotCreateOutputFile(e.getMessage(), e);
+        if (IOUtil.hasBlockCompressedExtension(outputFile.toPath())) {
+            printStream = new PrintStream(new BlockCompressedOutputStream(outputFile.toString(), compressionLevel));
+            indexCreator = new TabixIndexCreator(getBestAvailableSequenceDictionary(), )
+        } else {
+            try {
+                printStream = new PrintStream(outputFile.toString());
+            } catch (final IOException e) {
+                throw new UserException.CouldNotCreateOutputFile(outputFile, "Could not create output file", e);
+            }
         }
         if (!skipHeader) {
             doHeader();
