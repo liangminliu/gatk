@@ -51,15 +51,15 @@ public final class GATKSVVCFHeaderLines {
     static {
 
         addSymbAltAlleleLine(new VCFSimpleHeaderLine(GATKVCFConstants.SYMBOLIC_ALLELE_DEFINITION_HEADER_TAG,
-                GATKSVVCFConstants.SYMB_ALT_ALLELE_INV, "Inversion of reference sequence"));
+                GATKSVVCFConstants.SYMB_ALT_STRING_INV, "Inversion of reference sequence"));
         addSymbAltAlleleLine(new VCFSimpleHeaderLine(GATKVCFConstants.SYMBOLIC_ALLELE_DEFINITION_HEADER_TAG,
-                GATKSVVCFConstants.SYMB_ALT_ALLELE_DEL, "Deletion relative to the reference"));
+                GATKSVVCFConstants.SYMB_ALT_STRING_DEL, "Deletion relative to the reference"));
         addSymbAltAlleleLine(new VCFSimpleHeaderLine(GATKVCFConstants.SYMBOLIC_ALLELE_DEFINITION_HEADER_TAG,
-                GATKSVVCFConstants.SYMB_ALT_ALLELE_INS, "Insertion of novel sequence relative to the reference"));
+                GATKSVVCFConstants.SYMB_ALT_STRING_INS, "Insertion of novel sequence relative to the reference"));
         addSymbAltAlleleLine(new VCFSimpleHeaderLine(GATKVCFConstants.SYMBOLIC_ALLELE_DEFINITION_HEADER_TAG,
-                GATKSVVCFConstants.SYMB_ALT_ALLELE_DUP, "Region of elevated copy number relative to the reference"));
+                GATKSVVCFConstants.SYMB_ALT_STRING_DUP, "Region of elevated copy number relative to the reference"));
         addSymbAltAlleleLine(new VCFSimpleHeaderLine(GATKVCFConstants.SYMBOLIC_ALLELE_DEFINITION_HEADER_TAG,
-                GATKSVVCFConstants.SYMB_ALT_ALLELE_INVDUP, "Region of elevated copy number relative to the reference, with some copies inverted"));
+                GATKSVVCFConstants.SYMB_ALT_STRING_INVDUP, "Region of elevated copy number relative to the reference, with some copies inverted"));
         addSymbAltAlleleLine(new VCFSimpleHeaderLine(GATKVCFConstants.SYMBOLIC_ALLELE_DEFINITION_HEADER_TAG,
                 GATKSVVCFConstants.CPX_SV_SYB_ALT_ALLELE_STR, "Complex rearrangement of reference sequence"));
 
