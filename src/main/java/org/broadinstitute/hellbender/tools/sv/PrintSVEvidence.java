@@ -1,8 +1,6 @@
 package org.broadinstitute.hellbender.tools.sv;
 
-import htsjdk.samtools.util.IOUtil;
 import htsjdk.tribble.Feature;
-import htsjdk.tribble.FeatureCodec;
 import org.broadinstitute.barclay.argparser.Argument;
 import org.broadinstitute.barclay.argparser.CommandLineProgramProperties;
 import org.broadinstitute.barclay.argparser.ExperimentalFeature;
@@ -12,8 +10,7 @@ import org.broadinstitute.hellbender.cmdline.programgroups.StructuralVariantDisc
 import org.broadinstitute.hellbender.engine.*;
 import org.broadinstitute.hellbender.exceptions.GATKException;
 import org.broadinstitute.hellbender.utils.io.FeatureOutputStream;
-import org.broadinstitute.hellbender.utils.io.TabixIndexedFeatureOutputStream;
-import org.broadinstitute.hellbender.utils.io.UncompressedFeatureOutputStream;
+import org.broadinstitute.hellbender.utils.io.FeatureOutputStreamFactory;
 
 /**
  * Prints SV evidence records. Can be used with -L to retrieve records on a set of intervals.
@@ -97,12 +94,8 @@ public final class PrintSVEvidence extends FeatureWalker<Feature> {
     }
 
     private void initializeOutput() {
-        if (IOUtil.hasBlockCompressedExtension(outputFile.toPath())) {
-            final FeatureCodec codec = FeatureManager.getCodecForFile(outputFile.toPath());
-            outputStream = new TabixIndexedFeatureOutputStream(outputFile, codec, getBestAvailableSequenceDictionary(), compressionLevel);
-        } else {
-            outputStream = new UncompressedFeatureOutputStream(outputFile, getBestAvailableSequenceDictionary());
-        }
+        outputStream = new FeatureOutputStreamFactory().create(outputFile, SVIOUtils::encodeSVEvidenceFeature,
+                getBestAvailableSequenceDictionary(), compressionLevel);
     }
 
     private void writeHeader() {
@@ -122,7 +115,7 @@ public final class PrintSVEvidence extends FeatureWalker<Feature> {
                       final ReferenceContext referenceContext,
                       final FeatureContext featureContext) {
         // All evidence data types implement an encoding with toString()
-        outputStream.add(feature, f -> f.toString());
+        outputStream.add(feature);
     }
 
     @Override

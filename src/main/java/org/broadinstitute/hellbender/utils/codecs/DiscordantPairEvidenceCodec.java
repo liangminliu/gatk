@@ -7,6 +7,7 @@ import htsjdk.tribble.index.tabix.TabixFormat;
 import htsjdk.tribble.readers.LineIterator;
 import org.broadinstitute.hellbender.tools.sv.DiscordantPairEvidence;
 
+import java.util.Arrays;
 import java.util.List;
 
 public class DiscordantPairEvidenceCodec extends AsciiFeatureCodec<DiscordantPairEvidence> {
@@ -53,4 +54,17 @@ public class DiscordantPairEvidenceCodec extends AsciiFeatureCodec<DiscordantPai
 
     @Override
     public Object readActualHeader(final LineIterator reader) { return null; }
+
+    public static String encode(final DiscordantPairEvidence ev) {
+        final List<String> columns = Arrays.asList(
+                ev.getContig(),
+                Integer.toString(ev.getStart() - 1),
+                ev.getStartStrand() ? SVCallRecordCodec.STRAND_PLUS : SVCallRecordCodec.STRAND_MINUS,
+                ev.getEndContig(),
+                Integer.toString(ev.getEndPosition() - 1),
+                ev.getEndStrand() ? SVCallRecordCodec.STRAND_PLUS : SVCallRecordCodec.STRAND_MINUS,
+                ev.getSample()
+        );
+        return String.join(COL_DELIMITER, columns);
+    }
 }

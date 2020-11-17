@@ -8,6 +8,7 @@ import htsjdk.tribble.readers.LineIterator;
 import org.broadinstitute.hellbender.exceptions.UserException;
 import org.broadinstitute.hellbender.tools.sv.DepthEvidence;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class DepthEvidenceCodec extends AsciiFeatureCodec<DepthEvidence> {
@@ -59,5 +60,18 @@ public class DepthEvidenceCodec extends AsciiFeatureCodec<DepthEvidence> {
             throw new UserException.BadInput("Depth evidence file did not have a header line");
         }
         return reader.next();
+    }
+
+    public static String encode(final DepthEvidence ev) {
+        final int[] counts = ev.getCounts();
+        final int numCounts = counts.length;
+        final List<String> columns = new ArrayList<>(3 + numCounts);
+        columns.add(ev.getContig());
+        columns.add(Integer.toString(ev.getStart() - 1));
+        columns.add(Integer.toString(ev.getEnd()));
+        for (int i = 0; i < numCounts; i++) {
+            columns.add(Integer.toString(counts[i]));
+        }
+        return String.join(COL_DELIMITER, columns);
     }
 }

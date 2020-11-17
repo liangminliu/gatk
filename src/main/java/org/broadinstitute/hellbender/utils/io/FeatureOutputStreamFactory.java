@@ -1,0 +1,30 @@
+package org.broadinstitute.hellbender.utils.io;
+
+import htsjdk.samtools.SAMSequenceDictionary;
+import htsjdk.samtools.util.IOUtil;
+import htsjdk.tribble.Feature;
+import htsjdk.tribble.FeatureCodec;
+import org.broadinstitute.hellbender.engine.FeatureManager;
+import org.broadinstitute.hellbender.engine.GATKPath;
+
+import java.util.function.Function;
+
+public final class FeatureOutputStreamFactory {
+
+    private static final int DEFAULT_COMPRESSION_LEVEL = 4;
+
+    public FeatureOutputStream create(final GATKPath path, final Function<? extends Feature, String> encoder,
+                                      final SAMSequenceDictionary dictionary, final int compressionLevel) {
+        if (IOUtil.hasBlockCompressedExtension(path.toPath())) {
+            final FeatureCodec codec = FeatureManager.getCodecForFile(path.toPath());
+            return new TabixIndexedFeatureOutputStream(path, codec, encoder, dictionary, compressionLevel);
+        }
+        return new UncompressedFeatureOutputStream(path, encoder, dictionary);
+    }
+
+    public FeatureOutputStream create(final GATKPath path, final Function<? extends Feature, String> encoder,
+                                      final SAMSequenceDictionary dictionary) {
+        return create(path, encoder, dictionary, DEFAULT_COMPRESSION_LEVEL);
+    }
+
+}

@@ -7,6 +7,7 @@ import htsjdk.tribble.index.tabix.TabixFormat;
 import htsjdk.tribble.readers.LineIterator;
 import org.broadinstitute.hellbender.tools.sv.SplitReadEvidence;
 
+import java.util.Arrays;
 import java.util.List;
 
 public class SplitReadEvidenceCodec extends AsciiFeatureCodec<SplitReadEvidence> {
@@ -56,4 +57,15 @@ public class SplitReadEvidenceCodec extends AsciiFeatureCodec<SplitReadEvidence>
 
     @Override
     public Object readActualHeader(final LineIterator reader) { return null; }
+
+    public static String encode(final SplitReadEvidence ev) {
+        final List<String> columns = Arrays.asList(
+                ev.getContig(),
+                Integer.toString(ev.getStart() - 1),
+                ev.getStrand() ? SplitReadEvidenceCodec.DIRECTION_RIGHT : SplitReadEvidenceCodec.DIRECTION_LEFT,
+                Integer.toString(ev.getCount()),
+                ev.getSample()
+        );
+        return String.join(COL_DELIMITER, columns);
+    }
 }
