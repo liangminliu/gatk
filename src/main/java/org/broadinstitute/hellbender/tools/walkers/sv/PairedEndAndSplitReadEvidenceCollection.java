@@ -246,8 +246,12 @@ public class PairedEndAndSplitReadEvidenceCollection extends ReadWalker {
     @Override
     public void closeTool() {
         super.closeTool();
-        peWriter.close();
-        srWriter.close();
+        if (peWriter != null) {
+            peWriter.close();
+        }
+        if (srWriter != null) {
+            srWriter.close();
+        }
     }
 
     enum POSITION {

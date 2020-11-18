@@ -8,7 +8,7 @@ import org.broadinstitute.barclay.help.DocumentedFeature;
 import org.broadinstitute.hellbender.cmdline.StandardArgumentDefinitions;
 import org.broadinstitute.hellbender.cmdline.programgroups.StructuralVariantDiscoveryProgramGroup;
 import org.broadinstitute.hellbender.engine.*;
-import org.broadinstitute.hellbender.exceptions.GATKException;
+import org.broadinstitute.hellbender.utils.Utils;
 import org.broadinstitute.hellbender.utils.io.FeatureOutputStream;
 import org.broadinstitute.hellbender.utils.io.FeatureOutputStreamFactory;
 
@@ -56,21 +56,22 @@ public final class PrintSVEvidence extends FeatureWalker<Feature> {
     public static final String COMPRESSION_LEVEL_NAME = "compression-level";
 
     @Argument(
-            doc = "Input file URI with extension '.SR.txt', '.PE.txt', '.BAF.txt', or '.RD.txt' (may be gzipped).",
+            doc = "Input file URI with extension '.SR.txt', '.PE.txt', '.BAF.txt', or '.RD.txt' (not case-sensitive, may be gzipped).",
             fullName = EVIDENCE_FILE_NAME
     )
     private GATKPath inputFilePath;
 
     @Argument(
-            doc = "Output file. Filenames ending in '.gz' will be block compressed.",
+            doc = "Output file with an evidence extension matching the input. Will be Tabix-indexed with a block-compressed extension (e.g. '.gz').",
             fullName = StandardArgumentDefinitions.OUTPUT_LONG_NAME,
             shortName = StandardArgumentDefinitions.OUTPUT_SHORT_NAME
     )
-    private GATKPath outputFile;
+    private GATKPath outputFilePath;
 
     @Argument(
             doc = "Output compression level",
-            fullName = COMPRESSION_LEVEL_NAME
+            fullName = COMPRESSION_LEVEL_NAME,
+            minValue = 0, maxValue = 9, optional = true
     )
     private int compressionLevel = 4;
 
@@ -89,12 +90,20 @@ public final class PrintSVEvidence extends FeatureWalker<Feature> {
 
     @Override
     public void onTraversalStart() {
+        super.onTraversalStart();
+        validateInputs();
         initializeOutput();
         writeHeader();
     }
 
+    private void validateInputs() {
+        final Class inputClass = FeatureManager.getCodecForFile(inputFilePath.toPath()).getClass();
+        final Class outputClass = FeatureManager.getCodecForFile(outputFilePath.toPath()).getClass();
+        Utils.validate(inputClass == outputClass, "Input and output file types do not match");
+    }
+
     private void initializeOutput() {
-        outputStream = new FeatureOutputStreamFactory().create(outputFile, SVIOUtils::encodeSVEvidenceFeature,
+        outputStream = new FeatureOutputStreamFactory().create(outputFilePath, SVIOUtils::encodeSVEvidenceFeature,
                 getBestAvailableSequenceDictionary(), compressionLevel);
     }
 
@@ -104,7 +113,7 @@ public final class PrintSVEvidence extends FeatureWalker<Feature> {
             if (header instanceof String) {
                 outputStream.writeHeader((String) header);
             } else {
-                throw new GATKException.ShouldNeverReachHereException("Expected header object of type " + String.class.getSimpleName());
+                throw new IllegalArgumentException("Expected header object of type " + String.class.getSimpleName());
             }
         }
     }
@@ -120,7 +129,10 @@ public final class PrintSVEvidence extends FeatureWalker<Feature> {
 
     @Override
     public Object onTraversalSuccess() {
-        outputStream.close();
+        super.onTraversalSuccess();
+        if (outputStream != null) {
+            outputStream.close();
+        }
         return null;
     }
 }

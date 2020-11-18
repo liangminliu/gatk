@@ -12,6 +12,8 @@ import java.util.function.Function;
 
 public final class UncompressedFeatureOutputStream<F extends Feature> implements FeatureOutputStream<F> {
 
+    private static final String NEWLINE_CHARACTER = "\n";
+
     private final PrintStream outputStream;
     private final Function<F, String> encoder;
 
@@ -27,7 +29,7 @@ public final class UncompressedFeatureOutputStream<F extends Feature> implements
     public void writeHeader(final String header) {
         Utils.nonNull(header);
         try {
-            outputStream.write(header.getBytes());
+            outputStream.write((header + NEWLINE_CHARACTER).getBytes());
         } catch (final IOException e) {
             throw new GATKException("Error writing header", e);
         }

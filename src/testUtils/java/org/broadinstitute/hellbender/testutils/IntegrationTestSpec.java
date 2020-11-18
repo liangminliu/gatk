@@ -32,6 +32,7 @@ public final class IntegrationTestSpec {
     private final Class<?> expectedException;
     private final int nOutputFiles;
     private final List<String> expectedFileNames;
+    private String tempExtension;
 
     //If this field is set to true, bam files will be compared after they get sorted.
     //This is needed as a workaround because Spark tools don't respect a pre-ordered BAMs
@@ -48,6 +49,7 @@ public final class IntegrationTestSpec {
         this.expectedFileNames = expectedFileNames;
         this.compareBamFilesSorted = false;
         this.validationStringency = ValidationStringency.DEFAULT_STRINGENCY;
+        this.tempExtension = DEFAULT_TEMP_EXTENSION;
     }
 
     public IntegrationTestSpec(String args, int nOutputFiles, Class<?> expectedException) {
@@ -72,6 +74,10 @@ public final class IntegrationTestSpec {
         return expectedException;
     }
 
+    public void setOutputFileExtension(final String ext) {
+        tempExtension = ext;
+    }
+
     public void setCompareBamFilesSorted(final boolean compareBamFilesSorted) {
         this.compareBamFilesSorted = compareBamFilesSorted;
     }
@@ -91,8 +97,7 @@ public final class IntegrationTestSpec {
     public void executeTest(final String name, CommandLineProgramTester test) throws IOException {
         List<File> tmpFiles = new ArrayList<>();
         for (int i = 0; i < nOutputFiles; i++) {
-            String ext = DEFAULT_TEMP_EXTENSION;
-            File fl = BaseTest.createTempFile(String.format(DEFAULT_TEMP_PREFIX + ".%d", i), ext);
+            File fl = BaseTest.createTempFile(String.format(DEFAULT_TEMP_PREFIX + ".%d", i), tempExtension);
             tmpFiles.add(fl);
         }
 
@@ -243,7 +248,7 @@ public final class IntegrationTestSpec {
             throw new AssertionError("Detected unequal lines: " + numUnequalLines + " between files actual file = "+resultFile+", expected file = "+expectedFile);
         }
         else if (!sizeMatches) {
-            throw new AssertionError("File sizes are unequal - actual = " + actual.readLines().size() + ", expected = " + expected.readLines().size());
+            throw new AssertionError("File sizes are unequal - actual = " + (i + actual.readLines().size()) + ", expected = " + (i + expected.readLines().size()));
         }
     }
 

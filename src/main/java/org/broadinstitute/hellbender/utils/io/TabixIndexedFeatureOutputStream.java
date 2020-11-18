@@ -39,7 +39,7 @@ public final class TabixIndexedFeatureOutputStream<F extends Feature> implements
     public void writeHeader(final String header) {
         Utils.nonNull(header);
         try {
-            outputStream.write(header.getBytes());
+            outputStream.write((header + NEWLINE_CHARACTER).getBytes());
         } catch (final IOException e) {
             throw new GATKException("Error writing header", e);
         }
