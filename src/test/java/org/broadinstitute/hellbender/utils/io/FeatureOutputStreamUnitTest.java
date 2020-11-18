@@ -86,8 +86,7 @@ public class FeatureOutputStreamUnitTest extends GATKBaseTest {
         final Path outFilePath = Paths.get(tempDir.toString(), getClass().getSimpleName() + extension);
         final FeatureOutputStream stream = new UncompressedFeatureOutputStream(
                 new GATKPath(outFilePath.toString()),
-                SVIOUtils::encodeSVEvidenceFeature,
-                dictionary
+                SVIOUtils::encodeSVEvidenceFeature
         );
         testWithStream(stream, featureList, outFilePath, codec, expectedHeader, false);
     }

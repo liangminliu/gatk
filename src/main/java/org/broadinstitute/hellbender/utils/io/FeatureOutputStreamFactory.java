@@ -9,19 +9,28 @@ import org.broadinstitute.hellbender.engine.GATKPath;
 
 import java.util.function.Function;
 
+/**
+ * Convenient for creating the appropriate type of {@link FeatureOutputStream} for a given output path
+ */
 public final class FeatureOutputStreamFactory {
 
     private static final int DEFAULT_COMPRESSION_LEVEL = 4;
 
+    /**
+     * Creates block compressed output stream with index if possible, otherwise plain text
+     */
     public FeatureOutputStream create(final GATKPath path, final Function<? extends Feature, String> encoder,
                                       final SAMSequenceDictionary dictionary, final int compressionLevel) {
         if (IOUtil.hasBlockCompressedExtension(path.toPath())) {
             final FeatureCodec codec = FeatureManager.getCodecForFile(path.toPath());
             return new TabixIndexedFeatureOutputStream(path, codec, encoder, dictionary, compressionLevel);
         }
-        return new UncompressedFeatureOutputStream(path, encoder, dictionary);
+        return new UncompressedFeatureOutputStream(path, encoder);
     }
 
+    /**
+     * Uses default compression level if applicable
+     */
     public FeatureOutputStream create(final GATKPath path, final Function<? extends Feature, String> encoder,
                                       final SAMSequenceDictionary dictionary) {
         return create(path, encoder, dictionary, DEFAULT_COMPRESSION_LEVEL);

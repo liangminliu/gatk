@@ -17,6 +17,9 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.function.Function;
 
+/**
+ * Encodes Tribble {@link Feature}s to a block compressed file with Tabix index, given a feature encoding function
+ */
 public final class TabixIndexedFeatureOutputStream<F extends Feature> implements FeatureOutputStream<F> {
 
     private static final String NEWLINE_CHARACTER = "\n";
@@ -26,7 +29,14 @@ public final class TabixIndexedFeatureOutputStream<F extends Feature> implements
     private final Function<F, String> encoder;
     private final Path featurePath;
 
-    public TabixIndexedFeatureOutputStream(final GATKPath file, final FeatureCodec codec,
+    /**
+     * @param file file to write to
+     * @param codec feature codec
+     * @param encoder encoding function mapping a feature to its text record (whithout a newline character)
+     * @param dictionary sequence dictionary
+     * @param compressionLevel block compression level
+     */
+    public TabixIndexedFeatureOutputStream(final GATKPath file, final FeatureCodec<F, Object> codec,
                                            final Function<F, String> encoder, final SAMSequenceDictionary dictionary,
                                            final int compressionLevel) {
         Utils.nonNull(file);
@@ -40,6 +50,11 @@ public final class TabixIndexedFeatureOutputStream<F extends Feature> implements
         this.encoder = encoder;
     }
 
+    /**
+     * Writes header to file. Should be called before adding features
+     *
+     * @param header header text (without final newline character), cannot be null
+     */
     public void writeHeader(final String header) {
         Utils.nonNull(header);
         try {
@@ -49,7 +64,13 @@ public final class TabixIndexedFeatureOutputStream<F extends Feature> implements
         }
     }
 
+    /**
+     * Adds new feature and writes to file
+     *
+     * @param feature feature to write, cannot be null
+     */
     public void add(final F feature) {
+        Utils.nonNull(feature);
         if (indexCreator != null) {
             indexCreator.addFeature(feature, outputStream.getPosition());
         }
@@ -60,6 +81,9 @@ public final class TabixIndexedFeatureOutputStream<F extends Feature> implements
         }
     }
 
+    /**
+     * Closes the underlying stream and indexer
+     */
     @Override
     public void close() {
         try {
