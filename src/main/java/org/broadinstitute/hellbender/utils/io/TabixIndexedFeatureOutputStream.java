@@ -6,6 +6,7 @@ import htsjdk.samtools.util.IOUtil;
 import htsjdk.samtools.util.PositionalOutputStream;
 import htsjdk.tribble.Feature;
 import htsjdk.tribble.FeatureCodec;
+import htsjdk.tribble.index.Index;
 import htsjdk.tribble.index.IndexCreator;
 import htsjdk.tribble.index.tabix.TabixIndexCreator;
 import org.broadinstitute.hellbender.engine.GATKPath;
@@ -13,6 +14,7 @@ import org.broadinstitute.hellbender.exceptions.GATKException;
 import org.broadinstitute.hellbender.utils.Utils;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.function.Function;
 
 public final class TabixIndexedFeatureOutputStream<F extends Feature> implements FeatureOutputStream<F> {
@@ -22,6 +24,7 @@ public final class TabixIndexedFeatureOutputStream<F extends Feature> implements
     private final PositionalOutputStream outputStream;
     private final IndexCreator indexCreator;
     private final Function<F, String> encoder;
+    private final Path featurePath;
 
     public TabixIndexedFeatureOutputStream(final GATKPath file, final FeatureCodec codec,
                                            final Function<F, String> encoder, final SAMSequenceDictionary dictionary,
@@ -31,6 +34,7 @@ public final class TabixIndexedFeatureOutputStream<F extends Feature> implements
         Utils.nonNull(encoder);
         Utils.nonNull(dictionary);
         Utils.validateArg(IOUtil.hasBlockCompressedExtension(file.toPath()), "File must must have a gzip extension");
+        featurePath = file.toPath();
         outputStream = new PositionalOutputStream(new BlockCompressedOutputStream(file.toString(), compressionLevel));
         indexCreator = new TabixIndexCreator(dictionary, codec.getTabixFormat());
         this.encoder = encoder;
@@ -59,6 +63,8 @@ public final class TabixIndexedFeatureOutputStream<F extends Feature> implements
     @Override
     public void close() {
         try {
+            final Index index = indexCreator.finalizeIndex(outputStream.getPosition());
+            index.writeBasedOnFeaturePath(featurePath);
             outputStream.close();
         } catch (final IOException e) {
             throw new GATKException("Error closing output", e);
