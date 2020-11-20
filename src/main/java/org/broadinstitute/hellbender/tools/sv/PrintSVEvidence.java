@@ -9,6 +9,10 @@ import org.broadinstitute.hellbender.cmdline.StandardArgumentDefinitions;
 import org.broadinstitute.hellbender.cmdline.programgroups.StructuralVariantDiscoveryProgramGroup;
 import org.broadinstitute.hellbender.engine.*;
 import org.broadinstitute.hellbender.utils.Utils;
+import org.broadinstitute.hellbender.utils.codecs.BafEvidenceCodec;
+import org.broadinstitute.hellbender.utils.codecs.DepthEvidenceCodec;
+import org.broadinstitute.hellbender.utils.codecs.DiscordantPairEvidenceCodec;
+import org.broadinstitute.hellbender.utils.codecs.SplitReadEvidenceCodec;
 import org.broadinstitute.hellbender.utils.io.FeatureOutputStream;
 import org.broadinstitute.hellbender.utils.io.FeatureOutputStreamFactory;
 
@@ -37,6 +41,7 @@ import org.broadinstitute.hellbender.utils.io.FeatureOutputStreamFactory;
  *     gatk PrintSVEvidence \
  *       --evidence-file gs://my-bucket/batch_name.SR.txt.gz \
  *       -L intervals.bed \
+ *       --sequence-dictionary ref.dict \
  *       -O local.SR.txt.gz
  * </pre>
  *
@@ -56,13 +61,17 @@ public final class PrintSVEvidence extends FeatureWalker<Feature> {
     public static final String COMPRESSION_LEVEL_NAME = "compression-level";
 
     @Argument(
-            doc = "Input file URI with extension '.SR.txt', '.PE.txt', '.BAF.txt', or '.RD.txt' (not case-sensitive, may be gzipped).",
+            doc = "Input file URI with extension '"
+                    + SplitReadEvidenceCodec.FORMAT_SUFFIX + "', '"
+                    + DiscordantPairEvidenceCodec.FORMAT_SUFFIX + "', '"
+                    + BafEvidenceCodec.FORMAT_SUFFIX + "', or '"
+                    + DepthEvidenceCodec.FORMAT_SUFFIX + "' (may be gzipped).",
             fullName = EVIDENCE_FILE_NAME
     )
     private GATKPath inputFilePath;
 
     @Argument(
-            doc = "Output file with an evidence extension matching the input. Will be Tabix-indexed with a block-compressed extension (e.g. '.gz').",
+            doc = "Output file with an evidence extension matching the input. Will be Tabix-indexed if it has a block-compressed extension (e.g. '.gz').",
             fullName = StandardArgumentDefinitions.OUTPUT_LONG_NAME,
             shortName = StandardArgumentDefinitions.OUTPUT_SHORT_NAME
     )

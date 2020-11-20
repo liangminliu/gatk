@@ -70,6 +70,7 @@ public class PairedEndAndSplitReadEvidenceCollection extends ReadWalker {
     public static final String SPLIT_READ_FILE_ARGUMENT_SHORT_NAME = "SR";
     public static final String SPLIT_READ_FILE_ARGUMENT_LONG_NAME = "sr-file";
     public static final String SAMPLE_NAME_ARGUMENT_LONG_NAME = "sample-name";
+    public static final String COMPRESSION_LEVEL_ARGUMENT_LONG_NAME = "compression-level";
 
     @Argument(shortName = PAIRED_END_FILE_ARGUMENT_SHORT_NAME, fullName = PAIRED_END_FILE_ARGUMENT_LONG_NAME, doc = "Output file for paired end evidence", optional=false)
     public GATKPath peFile;
@@ -79,6 +80,9 @@ public class PairedEndAndSplitReadEvidenceCollection extends ReadWalker {
 
     @Argument(fullName = SAMPLE_NAME_ARGUMENT_LONG_NAME, doc = "Sample name")
     String sampleName = null;
+
+    @Argument(fullName = COMPRESSION_LEVEL_ARGUMENT_LONG_NAME, doc = "Output compression level")
+    int compressionLevel = 4;
 
     final Set<String> observedDiscordantNames = new HashSet<>();
     final PriorityQueue<SplitPos> splitPosBuffer = new PriorityQueue<>(new SplitPosComparator());
@@ -103,8 +107,8 @@ public class PairedEndAndSplitReadEvidenceCollection extends ReadWalker {
         super.onTraversalStart();
         sequenceDictionary = getBestAvailableSequenceDictionary();
         final FeatureOutputStreamFactory outputFactory = new FeatureOutputStreamFactory();
-        peWriter = outputFactory.create(peFile, SVIOUtils::encodeSVEvidenceFeature, sequenceDictionary);
-        srWriter = outputFactory.create(srFile, SVIOUtils::encodeSVEvidenceFeature, sequenceDictionary);
+        peWriter = outputFactory.create(peFile, SVIOUtils::encodeSVEvidenceFeature, sequenceDictionary, compressionLevel);
+        srWriter = outputFactory.create(srFile, SVIOUtils::encodeSVEvidenceFeature, sequenceDictionary, compressionLevel);
     }
 
     @Override
