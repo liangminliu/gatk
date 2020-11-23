@@ -252,9 +252,9 @@ public class SVTrainGenotyping extends TwoPassVariantWalker {
         } else if (svType.equals(StructuralVariantType.INS)) {
             length = 0;
         } else if (svType.equals(StructuralVariantType.BND)) {
-            final String chr2 = variant.getAttributeAsString(GATKSVVCFConstants.END_CONTIG_ATTRIBUTE, null);
+            final String chr2 = variant.getAttributeAsString(GATKSVVCFConstants.CONTIG2_ATTRIBUTE, null);
             if (chr2 == null) {
-                throw new UserException.BadInput("Missing BND variant attribute: " + GATKSVVCFConstants.END_CONTIG_ATTRIBUTE);
+                throw new UserException.BadInput("Missing BND variant attribute: " + GATKSVVCFConstants.CONTIG2_ATTRIBUTE);
             }
             if (chr2.equals(variant.getContig())) {
                 length = variant.getEnd() - variant.getStart();

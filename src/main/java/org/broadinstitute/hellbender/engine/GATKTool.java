@@ -598,6 +598,15 @@ public abstract class GATKTool extends CommandLineProgram {
         return false;
     }
 
+    /**
+     * Does this tool apply its own intervals logic? Tools that do should override to return true.
+     *
+     * @return true if this tool should ignore intervals input
+     */
+    public boolean ignoresUserIntervals() {
+        return false;
+    }
+
 
     /**
      * Get the {@link SequenceDictionaryValidationArgumentCollection} for the tool.
@@ -1028,10 +1037,18 @@ public abstract class GATKTool extends CommandLineProgram {
     }
 
     /**
-     * Returns the list of intervals to iterate, either limited to the user-supplied intervals or the entire reference genome if none were specified.
+     * Returns the list of intervals to iterate, either limited to the user-supplied intervals or the entire reference genome if the tool ignores interval inputs.
      * If no reference was supplied, null is returned
      */
     public List<SimpleInterval> getTraversalIntervals() {
+        return ignoresUserIntervals() ? hasReference() ? IntervalUtils.getAllIntervalsForReference(getReferenceDictionary()) : null : getRequestedIntervals();
+    }
+
+    /**
+     * Returns the list of intervals that were requested, either limited to the user-supplied intervals or the entire reference genome if none were specified.
+     * If no reference was supplied, null is returned
+     */
+    public List<SimpleInterval> getRequestedIntervals() {
         return hasUserSuppliedIntervals() ? userIntervals : hasReference() ? IntervalUtils.getAllIntervalsForReference(getReferenceDictionary()) : null;
     }
 

@@ -75,7 +75,7 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
         final int medianStart = startPositions.get(startPositions.size() / 2);
         final int medianEnd = endPositions.get(endPositions.size() / 2);
         final SVCallRecordWithEvidence exampleCall = mostPreciseCalls.iterator().next();
-        final int length = exampleCall.getContig().equals(exampleCall.getEndContig()) && !exampleCall.getType().equals(StructuralVariantType.INS) ? medianEnd - medianStart + 1 : exampleCall.getLength();
+        final int length = exampleCall.getContig().equals(exampleCall.getContig2()) && !exampleCall.getType().equals(StructuralVariantType.INS) ? medianEnd - medianStart + 1 : exampleCall.getLength();
         final List<String> algorithms = cluster.stream().flatMap(v -> v.getAlgorithms().stream()).distinct().collect(Collectors.toList());
         final List<Genotype> clusterSamples = cluster.stream().flatMap(v -> v.getGenotypes().stream()).collect(Collectors.toList());
         final List<StructuralVariantType> observedTypes = cluster.stream().map(SVCallRecord::getType).distinct().collect(Collectors.toList());
@@ -115,8 +115,8 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
         }
 
         //TODO: merge evidence for WGS data
-        return new SVCallRecordWithEvidence(exampleCall.getContig(), newStart, exampleCall.getStartStrand(),
-                exampleCall.getEndContig(), newEnd, exampleCall.getEndStrand(), clusterType, length, algorithms, clusterSamples,
+        return new SVCallRecordWithEvidence(exampleCall.getId(), exampleCall.getContig(), newStart, newEnd, exampleCall.getStrand1(),
+                exampleCall.getStrand2(), clusterType, length, algorithms, clusterSamples,
                 exampleCall.getStartSplitReadSites(), exampleCall.getEndSplitReadSites(), exampleCall.getDiscordantPairs());
     }
 
@@ -166,11 +166,11 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
     protected boolean itemsAreIdentical(final SVCallRecordWithEvidence a, final SVCallRecordWithEvidence b) {
         return a.getContig().equals(b.getContig())
                 && a.getStart() == b.getStart()
-                && a.getEndContig().equals(b.getEndContig())
+                && a.getContig2().equals(b.getContig2())
                 && a.getEnd() == b.getEnd()
                 && a.getType().equals(b.getType())
-                && a.getStartStrand() == b.getStartStrand()
-                && a.getEndStrand() == b.getEndStrand();
+                && a.getStrand1() == b.getStrand1()
+                && a.getStrand2() == b.getStrand2();
     }
 
     /**
@@ -194,12 +194,12 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
                 .collect(Collectors.toList());
         final SVCallRecordWithEvidence example = items.iterator().next();
         return new SVCallRecordWithEvidence(
+                example.getId(),
                 example.getContig(),
                 example.getStart(),
-                example.getStartStrand(),
-                example.getEndContig(),
                 example.getEnd(),
-                example.getEndStrand(),
+                example.getStrand1(),
+                example.getStrand2(),
                 example.getType(),
                 example.getLength(),
                 algorithms,
@@ -210,7 +210,7 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
     }
 
     protected boolean clusterTogetherBothDepthOnly(final SVCallRecordWithEvidence a, final SVCallRecordWithEvidence b) {
-        if (!a.getContig().equals(a.getEndContig()) || !b.getContig().equals(b.getEndContig())) {
+        if (!a.getContig().equals(a.getContig2()) || !b.getContig().equals(b.getContig2())) {
             throw new IllegalArgumentException("Attempted to cluster depth-only calls with endpoints on different contigs");
         }
         final SimpleInterval intervalA = new SimpleInterval(a.getContig(), a.getStart(), a.getEnd());
@@ -220,8 +220,8 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
 
     protected boolean clusterTogetherBothWithEvidence(final SVCallRecordWithEvidence a, final SVCallRecordWithEvidence b) {
         // Reject if one is intrachromosomal and the other isn't
-        final boolean intrachromosomalA = a.getContig().equals(a.getEndContig());
-        final boolean intrachromosomalB = b.getContig().equals(b.getEndContig());
+        final boolean intrachromosomalA = a.getContig().equals(a.getContig2());
+        final boolean intrachromosomalB = b.getContig().equals(b.getContig2());
         if (intrachromosomalA != intrachromosomalB) return false;
 
         // Matching endpoints
@@ -233,8 +233,8 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
     }
 
     protected boolean clusterTogetherMixedEvidence(final SVCallRecordWithEvidence a, final SVCallRecordWithEvidence b) {
-        final boolean intrachromosomalA = a.getContig().equals(a.getEndContig());
-        final boolean intrachromosomalB = b.getContig().equals(b.getEndContig());
+        final boolean intrachromosomalA = a.getContig().equals(a.getContig2());
+        final boolean intrachromosomalB = b.getContig().equals(b.getContig2());
         if (!(intrachromosomalA && intrachromosomalB)) return false;
         if (!a.getContig().equals(b.getContig())) return false;
         return Math.abs(a.getStart() - b.getStart()) < MIXED_CLUSTERING_WINDOW
@@ -244,18 +244,18 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
     private SimpleInterval getStartClusteringInterval(final SVCallRecordWithEvidence call) {
         if (this.genomicToBinMap == null) {
             final int padding = getEndpointClusteringPadding(call);
-            return call.getStartAsInterval().expandWithinContig(padding, dictionary);
+            return call.getPosition1AsInterval().expandWithinContig(padding, dictionary);
         } else {
-            return call.getStartAsInterval();
+            return call.getPosition1AsInterval();
         }
     }
 
     protected SimpleInterval getEndClusteringInterval(final SVCallRecordWithEvidence call) {
         if (this.genomicToBinMap == null) {
             final int padding = getEndpointClusteringPadding(call);
-            return call.getEndAsInterval().expandWithinContig(padding, dictionary);
+            return call.getPosition2AsInterval().expandWithinContig(padding, dictionary);
         } else {
-            return call.getStartAsInterval();
+            return call.getPosition1AsInterval();
         }
     }
 

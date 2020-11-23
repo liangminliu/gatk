@@ -27,23 +27,27 @@ public class BreakpointRefiner {
     public SVCallRecordWithEvidence refineCall(final SVCallRecordWithEvidence call) {
         Utils.nonNull(call);
         Utils.nonNull(call.getStartSplitReadSites());
-        final SVCallRecordWithEvidence refinedCall;
         if (SVClusterEngine.isDepthOnlyCall(call)) {
-            refinedCall = call;
-        } else {
-            final Set<String> backgroundSamples = getBackgroundSamples(call);
-            final SplitReadSite refinedStartSite = getRefinedSite(call.getStartSplitReadSites(), call.getSamples(), backgroundSamples, call.getStart());
-            final int endLowerBound = getEndLowerBound(call.getType(), call.getContig(), refinedStartSite.getPosition(), call.getEndContig());
-            final int defaultEndPosition = Math.max(endLowerBound, call.getEnd());
-            final List<SplitReadSite> validSites = getValidEndSplitReadSites(call, endLowerBound);
-            final SplitReadSite splitReadEndSite = getRefinedSite(validSites, call.getSamples(), backgroundSamples, defaultEndPosition);
-            refinedCall = new SVCallRecordWithEvidence(
-                    call.getContig(), refinedStartSite.getPosition(), call.getStartStrand(),
-                    call.getEndContig(), splitReadEndSite.getPosition(), call.getEndStrand(),
-                    call.getType(), call.getLength(), call.getAlgorithms(), call.getGenotypes(),
+            return call;
+        }
+        final Set<String> backgroundSamples = getBackgroundSamples(call);
+        final SplitReadSite refinedStartSite = getRefinedSite(call.getStartSplitReadSites(), call.getSamples(), backgroundSamples, call.getStart());
+        final int endLowerBound = getEndLowerBound(call.getType(), call.getContig(), refinedStartSite.getPosition(), call.getContig2());
+        final int defaultEndPosition = Math.max(endLowerBound, call.getEnd());
+        final List<SplitReadSite> validSites = getValidEndSplitReadSites(call, endLowerBound);
+        final SplitReadSite refinedEndSite = getRefinedSite(validSites, call.getSamples(), backgroundSamples, defaultEndPosition);
+
+        if (call.getContig().equals(call.getContig2())) {
+            return new SVCallRecordWithEvidence(
+                    call.getId(), call.getContig(), refinedStartSite.getPosition(), refinedEndSite.getPosition(), call.getStrand1(),
+                    call.getStrand2(), call.getType(), call.getLength(), call.getAlgorithms(), call.getGenotypes(),
                     call.getStartSplitReadSites(), call.getEndSplitReadSites(), call.getDiscordantPairs());
         }
-        return refinedCall;
+        return new SVCallRecordWithEvidence(
+                call.getId(), call.getContig(), refinedStartSite.getPosition(), refinedStartSite.getPosition() + 1, call.getStrand1(),
+                call.getContig2(), refinedEndSite.getPosition(), call.getStrand2(),
+                call.getType(), call.getLength(), call.getAlgorithms(), call.getGenotypes(),
+                call.getStartSplitReadSites(), call.getEndSplitReadSites(), call.getDiscordantPairs());
     }
 
     private List<SplitReadSite> getValidEndSplitReadSites(final SVCallRecordWithEvidence call, final int endLowerBound) {

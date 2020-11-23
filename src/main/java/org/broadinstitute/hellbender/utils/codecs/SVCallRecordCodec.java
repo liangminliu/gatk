@@ -18,7 +18,7 @@ public class SVCallRecordCodec extends AsciiFeatureCodec<SVCallRecord> {
     public static final String COL_DELIMITER = "\t";
     public static String STRAND_PLUS = "+";
     public static String STRAND_MINUS = "-";
-    public static final TabixFormat SV_CALL_RECORD_FORMAT = new TabixFormat(TabixFormat.ZERO_BASED, 1, 2, 0, '#', 0);
+    public static final TabixFormat SV_CALL_RECORD_FORMAT = new TabixFormat(TabixFormat.ZERO_BASED, 1, 2, 3, '#', 0);
     private static final Splitter splitter = Splitter.on(COL_DELIMITER);
 
     public SVCallRecordCodec() {
@@ -28,21 +28,23 @@ public class SVCallRecordCodec extends AsciiFeatureCodec<SVCallRecord> {
     @Override
     public SVCallRecord decode(final String line) {
         final List<String> tokens = splitter.splitToList(line);
-        if (tokens.size() != 10) {
+        if (tokens.size() != 11) {
             throw new IllegalArgumentException("Invalid number of columns: " + tokens.size());
         }
         return new SVCallRecord(
+                null,
                 tokens.get(0),
                 Integer.parseUnsignedInt(tokens.get(1)) + 1, // Convert to 1-based indexing
-                tokens.get(2).equals(STRAND_PLUS),
-                tokens.get(3),
-                Integer.parseUnsignedInt(tokens.get(4)) + 1,
-                tokens.get(5).equals(STRAND_PLUS),
-                StructuralVariantType.valueOf(tokens.get(6)),
-                Integer.parseInt(tokens.get(7)),
-                Arrays.asList(tokens.get(8)),
+                Integer.parseUnsignedInt(tokens.get(2)) + 1,
+                tokens.get(3).equals(STRAND_PLUS),
+                tokens.get(4),
+                Integer.parseUnsignedInt(tokens.get(5)) + 1,
+                tokens.get(6).equals(STRAND_PLUS),
+                StructuralVariantType.valueOf(tokens.get(7)),
+                Integer.parseInt(tokens.get(8)),
+                Arrays.asList(tokens.get(9)),
                 //TODO: these aren't going to load because they're "uncalled"
-                Collections.singletonList(new GenotypeBuilder().name(tokens.get(9)).make())
+                Collections.singletonList(new GenotypeBuilder().name(tokens.get(10)).make())
         );
     }
 
@@ -61,10 +63,11 @@ public class SVCallRecordCodec extends AsciiFeatureCodec<SVCallRecord> {
         final List<String> data = Arrays.asList(
                 record.getContig(),
                 Integer.toString(record.getStart() - 1), // Convert to 0-based indexing
-                record.getStartStrand() ? STRAND_PLUS : STRAND_MINUS,
-                record.getEndContig(),
-                Integer.toString(record.getEnd() - 1),
-                record.getEndStrand() ? STRAND_PLUS : STRAND_MINUS,
+                Integer.toString(record.getEnd() - 1), // Convert to 0-based indexing
+                record.getStrand1() ? STRAND_PLUS : STRAND_MINUS,
+                record.getContig2(),
+                Integer.toString(record.getPosition2() - 1),
+                record.getStrand2() ? STRAND_PLUS : STRAND_MINUS,
                 record.getType().name(),
                 Integer.toString(record.getLength()),
                 String.join(",", record.getAlgorithms()),

@@ -42,8 +42,8 @@ public class SVDepthOnlyCallDefragmenter extends LocatableClusterEngine<SVCallRe
         final int length = newEnd - newStart + 1;  //+1 because GATK intervals are inclusive
         final List<String> algorithms = cluster.stream().flatMap(v -> v.getAlgorithms().stream()).distinct().collect(Collectors.toList()); //should be depth only
         final List<Genotype> clusterGenotypes = deduplicateGenotypes(cluster.stream().flatMap(v -> v.getGenotypes().stream()).collect(Collectors.toList()));
-        return new SVCallRecordWithEvidence(exampleCall.getContig(), newStart, exampleCall.getStartStrand(),
-                exampleCall.getEndContig(), newEnd, exampleCall.getEndStrand(), exampleCall.getType(), length, algorithms, clusterGenotypes,
+        return new SVCallRecordWithEvidence(exampleCall.getId(), exampleCall.getContig(), newStart, newEnd, exampleCall.getStrand1(),
+                exampleCall.getStrand2(), exampleCall.getType(), length, algorithms, clusterGenotypes,
                 exampleCall.getStartSplitReadSites(), exampleCall.getEndSplitReadSites(), exampleCall.getDiscordantPairs());
     }
 
@@ -114,8 +114,8 @@ public class SVDepthOnlyCallDefragmenter extends LocatableClusterEngine<SVCallRe
     @Override
     protected boolean clusterTogether(final SVCallRecordWithEvidence a, final SVCallRecordWithEvidence b) {
         if (!isDepthOnlyCall(a) || !isDepthOnlyCall(b)) return false;
-        Utils.validate(a.getContig().equals(a.getEndContig()), "Call A is depth-only but interchromosomal");
-        Utils.validate(b.getContig().equals(b.getEndContig()), "Call B is depth-only but interchromosomal");
+        Utils.validate(a.getContig().equals(a.getContig2()), "Call A is depth-only but interchromosomal");
+        Utils.validate(b.getContig().equals(b.getContig2()), "Call B is depth-only but interchromosomal");
         if (!a.getType().equals(b.getType())) return false;
         final Set<String> sharedSamples = new LinkedHashSet<>(a.getSamples());
         sharedSamples.retainAll(b.getSamples());

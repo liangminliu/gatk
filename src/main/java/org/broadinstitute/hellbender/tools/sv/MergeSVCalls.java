@@ -1,13 +1,9 @@
 package org.broadinstitute.hellbender.tools.sv;
 
 import htsjdk.samtools.SAMSequenceDictionary;
-import htsjdk.samtools.util.IOUtil;
-import htsjdk.tribble.Tribble;
-import htsjdk.tribble.index.Index;
-import htsjdk.tribble.index.IndexFactory;
 import htsjdk.variant.variantcontext.*;
-import htsjdk.variant.vcf.VCFHeader;
-import htsjdk.variant.vcf.VCFHeaderLine;
+import htsjdk.variant.variantcontext.writer.VariantContextWriter;
+import htsjdk.variant.vcf.*;
 import org.broadinstitute.barclay.argparser.Argument;
 import org.broadinstitute.barclay.argparser.CommandLineProgramProperties;
 import org.broadinstitute.barclay.argparser.ExperimentalFeature;
@@ -20,19 +16,16 @@ import org.broadinstitute.hellbender.engine.GATKTool;
 import org.broadinstitute.hellbender.exceptions.GATKException;
 import org.broadinstitute.hellbender.exceptions.UserException;
 import org.broadinstitute.hellbender.tools.copynumber.PostprocessGermlineCNVCalls;
-import org.broadinstitute.hellbender.utils.IntervalUtils;
-import org.broadinstitute.hellbender.utils.codecs.SVCallRecordCodec;
+import org.broadinstitute.hellbender.tools.spark.sv.utils.GATKSVVCFConstants;
+import org.broadinstitute.hellbender.tools.spark.sv.utils.GATKSVVCFHeaderLines;
+import org.broadinstitute.hellbender.utils.Utils;
 import org.broadinstitute.hellbender.utils.io.IOUtils;
+import org.broadinstitute.hellbender.utils.variant.VariantContextGetters;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.PrintStream;
-import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
@@ -58,7 +51,7 @@ import java.util.stream.StreamSupport;
  *
  * <ul>
  *     <li>
- *         TSV variants file
+ *         VCF
  *     </li>
  *     <li>
  *         Small CNV interval list (optional)
@@ -108,15 +101,11 @@ public final class MergeSVCalls extends GATKTool {
     private List<String> cnmopsFiles;
 
     @Argument(
-            doc = "Output file ending in \"" + SVCallRecordCodec.FORMAT_SUFFIX + "\"",
+            doc = "Output VCF",
             fullName = StandardArgumentDefinitions.OUTPUT_LONG_NAME,
             shortName = StandardArgumentDefinitions.OUTPUT_SHORT_NAME
     )
     private GATKPath outputFile;
-
-    @Argument(fullName=CREATE_INDEX_LONG_NAME,
-            doc = "If true, create a index when writing output file", optional=true, common = true)
-    public boolean createOutputIndex = true;
 
     @Argument(
             doc = "Skip VCF sequence dictionary check",
@@ -134,15 +123,9 @@ public final class MergeSVCalls extends GATKTool {
     )
     private int minGCNVQuality = 60;
 
-    @Argument(
-            doc = "Compression level for gzipped output",
-            fullName = COMPRESSION_LEVEL_LONG_NAME
-    )
-    private int compressionLevel = 6;
-
     private List<SVCallRecord> records;
+    private List<String> samples;
     private SAMSequenceDictionary dictionary;
-    private static final SVCallRecordCodec CALL_RECORD_CODEC = new SVCallRecordCodec();
 
     @Override
     public void onTraversalStart() {
@@ -155,11 +138,9 @@ public final class MergeSVCalls extends GATKTool {
 
     @Override
     public Object onTraversalSuccess() {
-        records.sort(IntervalUtils.getDictionaryOrderComparator(dictionary));
+        samples = records.stream().flatMap(r -> r.getSamples().stream()).distinct().sorted().collect(Collectors.toList());
+        sortAndDeduplicateRecords();
         writeVariants();
-        if (createOutputIndex) {
-            writeIndex();
-        }
         return null;
     }
 
@@ -171,6 +152,63 @@ public final class MergeSVCalls extends GATKTool {
         for (int i = 0; i < inputFiles.size(); i++) {
             processVariantFile(inputFiles.get(i), i);
         }
+    }
+
+    private void sortAndDeduplicateRecords() {
+        records = records.stream().sorted(this::recordComparator).collect(Collectors.toList());
+        final List<SVCallRecord> newRecords = new ArrayList<>(records.size());
+        List<SVCallRecord> currentCluster = new ArrayList<>();
+        SVCallRecord exampleRecord = null;
+        for (final SVCallRecord record : records) {
+            if (currentCluster.isEmpty()) {
+                currentCluster.add(record);
+                exampleRecord = record;
+            } else if (SVCallRecordUtils.compareRecordsBySiteInfo(record, exampleRecord, dictionary) == 0) {
+                currentCluster.add(record);
+            } else {
+                newRecords.add(combineRecords(currentCluster, samples));
+                currentCluster = new ArrayList<>();
+                currentCluster.add(record);
+                exampleRecord = record;
+            }
+        }
+    }
+
+    private int recordComparator(final SVCallRecord first, final SVCallRecord second) {
+        return SVCallRecordUtils.compareRecordsBySiteInfo(first, second, dictionary);
+    }
+
+    private static SVCallRecord combineRecords(final List<SVCallRecord> records, final List<String> samples) {
+        Utils.validateArg(!records.isEmpty(), "Can't combine empty list");
+        // Trivial case
+        if (records.size() == 1) {
+            return records.get(0);
+        }
+
+        // Create genotype contexts so we can look up by sample id
+        final List<GenotypesContext> contexts = new ArrayList<>(records.size());
+        for (final SVCallRecord record : records) {
+            final GenotypesContext context =  GenotypesContext.create(record.getGenotypes().size());
+            record.getGenotypes().forEach(context::add);
+            contexts.add(context);
+        }
+
+        final SVCallRecord firstRecord = records.get(0);
+        final List<Genotype> newGenotypes = new ArrayList(firstRecord.getGenotypes().size());
+        for (final String sample : samples) {
+            // Set raw call attribute true if at least one is true
+            final boolean hasCall = contexts.stream().map(c -> c.get(sample))
+                    .filter(Objects::nonNull)
+                    .anyMatch(g -> VariantContextGetters.getAttributeAsInt(g, SVCluster.RAW_CALL_ATTRIBUTE, SVCluster.RAW_CALL_ATTRIBUTE_FALSE) == SVCluster.RAW_CALL_ATTRIBUTE_TRUE);
+            final GenotypeBuilder builder = new GenotypeBuilder(sample).attribute(SVCluster.RAW_CALL_ATTRIBUTE, hasCall ? SVCluster.RAW_CALL_ATTRIBUTE_TRUE : SVCluster.RAW_CALL_ATTRIBUTE_FALSE);
+            newGenotypes.add(builder.make());
+        }
+
+        //Combine algorithms
+        final List<String> algorithms = records.stream().map(SVCallRecord::getAlgorithms).flatMap(List::stream).distinct().collect(Collectors.toList());
+        return new SVCallRecord(firstRecord.getId(), firstRecord.getContig(), firstRecord.getStart(), firstRecord.getEnd(), firstRecord.getStrand1(),
+                firstRecord.getContig2(), firstRecord.getPosition2(), firstRecord.getStrand2(), firstRecord.getType(), firstRecord.getLength(),
+                algorithms, newGenotypes);
     }
 
     private void processCNMOPSFile(final String path) {
@@ -187,7 +225,7 @@ public final class MergeSVCalls extends GATKTool {
             }
             reader.lines().map(this::cnmopsRecordParser).forEach(r -> {
                 records.add(r);
-                progressMeter.update(r.getStartAsInterval());
+                progressMeter.update(r);
             });
         } catch (final IOException e) {
             throw new UserException.CouldNotReadInputFile("Encountered exception while reading cnMOPS file: " + path, e);
@@ -211,7 +249,8 @@ public final class MergeSVCalls extends GATKTool {
         final List<String> algorithms = Collections.singletonList(SVCluster.DEPTH_ALGORITHM);
         // Make genotypes het to play nicely with the defragmenter
         final List<Genotype> genotypes = samples.stream().map(MergeSVCalls::buildHetGenotype).collect(Collectors.toList());
-        return new SVCallRecord(contig, start, startStrand, contig, end, endStrand, type, length, algorithms, genotypes);
+        final String id = String.format("cnmops_%s_%s_%d_%d", type.toString(), contig, start, end);
+        return new SVCallRecord(id, contig, start, end, startStrand, endStrand, type, length, algorithms, genotypes);
     }
 
     private static Genotype buildHetGenotype(final String sample) {
@@ -235,7 +274,7 @@ public final class MergeSVCalls extends GATKTool {
         }
         inputRecords.forEachOrdered(r -> {
             records.add(r);
-            progressMeter.update(r.getStartAsInterval());
+            progressMeter.update(r);
         });
     }
 
@@ -258,31 +297,23 @@ public final class MergeSVCalls extends GATKTool {
     }
 
     private void writeVariants() {
-        try (final PrintStream writer =  IOUtils.makePrintStreamMaybeBlockGzipped(outputFile.toPath().toFile(), compressionLevel)) {
-            for (final SVCallRecord record : records) {
-                writer.println(CALL_RECORD_CODEC.encode(record));
-            }
-        } catch(final IOException e) {
-            throw new GATKException("Error writing output file", e);
-        }
+        final VariantContextWriter writer = createVCFWriter(outputFile);
+        writer.writeHeader(getVcfHeader());
+        records.stream().map(r -> SVCallRecordUtils.getVariantBuilder(r, samples).make()).forEachOrdered(writer::add);
+        writer.close();
     }
 
-    private void writeIndex() {
-        final Path outPath = outputFile.toPath();
-        try {
-            final Index index;
-            final Path indexPath;
-            if (IOUtil.hasBlockCompressedExtension(outPath)) {
-                index = IndexFactory.createIndex(outPath, CALL_RECORD_CODEC, IndexFactory.IndexType.TABIX, dictionary);
-                indexPath = Tribble.tabixIndexPath(outPath);
-            } else {
-                // Optimize indices for other kinds of files for seek time / querying
-                index = IndexFactory.createDynamicIndex(outPath, CALL_RECORD_CODEC, IndexFactory.IndexBalanceApproach.FOR_SEEK_TIME);
-                indexPath = Tribble.indexPath(outPath);
-            }
-            index.write(indexPath);
-        } catch (final IOException e) {
-            throw new UserException.CouldNotIndexFile(outputFile.toPath(), e);
-        }
+    private VCFHeader getVcfHeader() {
+        final VCFHeader header = new VCFHeader(getDefaultToolVCFHeaderLines(), samples);
+        header.setSequenceDictionary(dictionary);
+        header.addMetaDataLine(VCFStandardHeaderLines.getInfoLine(VCFConstants.END_KEY));
+        header.addMetaDataLine(GATKSVVCFHeaderLines.getInfoLine(GATKSVVCFConstants.SVLEN));
+        header.addMetaDataLine(GATKSVVCFHeaderLines.getInfoLine(GATKSVVCFConstants.SVTYPE));
+        header.addMetaDataLine(new VCFInfoHeaderLine(GATKSVVCFConstants.END2_ATTRIBUTE, 1, VCFHeaderLineType.String, "Second position"));
+        header.addMetaDataLine(new VCFInfoHeaderLine(GATKSVVCFConstants.CONTIG2_ATTRIBUTE, 1, VCFHeaderLineType.String, "Second contig"));
+        header.addMetaDataLine(new VCFInfoHeaderLine(SVCluster.STRANDS_ATTRIBUTE, 1, VCFHeaderLineType.String, "First and second strands"));
+        header.addMetaDataLine(new VCFInfoHeaderLine(SVCluster.ALGORITHMS_ATTRIBUTE, 1, VCFHeaderLineType.String, "List of calling algorithms"));
+        header.addMetaDataLine(new VCFFormatHeaderLine(SVCluster.RAW_CALL_ATTRIBUTE, 1, VCFHeaderLineType.Integer, "Sample non-reference in raw calls"));
+        return header;
     }
 }

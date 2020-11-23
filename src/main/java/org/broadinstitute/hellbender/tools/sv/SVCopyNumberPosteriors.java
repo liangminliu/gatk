@@ -26,6 +26,7 @@ import org.broadinstitute.hellbender.tools.copynumber.formats.records.IntervalCo
 import org.broadinstitute.hellbender.tools.copynumber.formats.records.LocatableCopyNumberPosteriorDistribution;
 import org.broadinstitute.hellbender.tools.copynumber.gcnv.GermlineCNVIntervalVariantDecoder;
 import org.broadinstitute.hellbender.tools.copynumber.gcnv.IntegerCopyNumberState;
+import org.broadinstitute.hellbender.tools.spark.sv.utils.GATKSVVCFConstants;
 import org.broadinstitute.hellbender.tools.spark.sv.utils.SVUtils;
 import org.broadinstitute.hellbender.utils.QualityUtils;
 import org.broadinstitute.hellbender.utils.SimpleInterval;
@@ -225,13 +226,13 @@ public final class SVCopyNumberPosteriors extends VariantWalker {
     }
 
     private void loadIntervalTree() {
-        if (getTraversalIntervals() == null) {
+        if (getRequestedIntervals() == null) {
             for (final SAMSequenceRecord sequence : dictionary.getSequences()) {
                 whitelistedIntervalTreeMap.put(sequence.getSequenceName(), new IntervalTree<>());
                 whitelistedIntervalTreeMap.get(sequence.getSequenceName()).put(1, sequence.getSequenceLength(), null);
             }
         } else {
-            for (final SimpleInterval interval : getTraversalIntervals()) {
+            for (final SimpleInterval interval : getRequestedIntervals()) {
                 whitelistedIntervalTreeMap.putIfAbsent(interval.getContig(), new IntervalTree<>());
                 whitelistedIntervalTreeMap.get(interval.getContig()).put(interval.getStart(), interval.getEnd(), null);
             }
@@ -288,7 +289,7 @@ public final class SVCopyNumberPosteriors extends VariantWalker {
 
     public void apply(VariantContext variant, ReadsContext readsContext, ReferenceContext referenceContext, FeatureContext featureContext) {
         final SVCallRecord call = SVCallRecordWithEvidence.create(variant);
-        if (!SVCluster.isValidSize(call, minEventSize) || !SVCluster.isWhitelisted(call, whitelistedIntervalTreeMap, minDepthOnlyIncludeOverlap)) return;
+        if (!SVCluster.isValidSize(call, minEventSize) || !SVCluster.intervalIsIncluded(call, whitelistedIntervalTreeMap, minDepthOnlyIncludeOverlap)) return;
 
         final String contig = variant.getContig();
         if (contig != currentContig) {
@@ -353,7 +354,7 @@ public final class SVCopyNumberPosteriors extends VariantWalker {
                 && !call.getType().equals(StructuralVariantType.BND)) {
             return null;
         }
-        if (!call.getContig().equals(call.getEndContig())) {
+        if (!call.getContig().equals(call.getContig2())) {
             return null;
         }
         final SimpleInterval interval = new SimpleInterval(call.getContig(), call.getStart(), call.getEnd());
@@ -439,7 +440,7 @@ public final class SVCopyNumberPosteriors extends VariantWalker {
         final Allele altAllele = Allele.create(SVGenotypeEngine.BND_SYMBOLIC_ALLELE, false);
         builder.alleles(Lists.newArrayList(Allele.REF_N, altAllele));
         builder.attribute(VCFConstants.SVTYPE, StructuralVariantType.BND);
-        builder.attribute(SVCluster.SVLEN_ATTRIBUTE, -1);
+        builder.attribute(GATKSVVCFConstants.SVLEN, -1);
         return builder.make();
     }
 
