@@ -172,6 +172,7 @@ public final class MergeSVCalls extends GATKTool {
                 exampleRecord = record;
             }
         }
+        records = newRecords;
     }
 
     private int recordComparator(final SVCallRecord first, final SVCallRecord second) {
