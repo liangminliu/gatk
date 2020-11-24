@@ -18,7 +18,7 @@ import java.util.stream.IntStream;
 public class SVGenotypeEngine {
 
     public static final Allele DEFAULT_REF_ALLELE = Allele.REF_N;
-    public static final String BND_SYMBOLIC_ALLELE = "<" + StructuralVariantType.BND.name() + ">";
+    public static final Allele BND_SYMBOLIC_ALLELE = Allele.create("<" + StructuralVariantType.BND.name() + ">", false);
     public static final List<StructuralVariantType> CNV_TYPES = Lists.newArrayList(StructuralVariantType.DEL, StructuralVariantType.DUP);
 
     public VariantContext genotypeVariant(final VariantContext variant) {

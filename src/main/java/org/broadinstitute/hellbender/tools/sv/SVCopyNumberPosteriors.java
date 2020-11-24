@@ -22,6 +22,7 @@ import org.broadinstitute.hellbender.tools.copynumber.formats.collections.Called
 import org.broadinstitute.hellbender.tools.copynumber.formats.records.CopyNumberPosteriorDistribution;
 import org.broadinstitute.hellbender.tools.copynumber.gcnv.IntegerCopyNumberState;
 import org.broadinstitute.hellbender.tools.spark.sv.utils.GATKSVVCFConstants;
+import org.broadinstitute.hellbender.utils.QualityUtils;
 import org.broadinstitute.hellbender.utils.SimpleInterval;
 import org.broadinstitute.hellbender.utils.Utils;
 import org.broadinstitute.hellbender.utils.variant.VariantContextGetters;
@@ -195,7 +196,11 @@ public final class SVCopyNumberPosteriors extends VariantWalker {
         }
 
         VariantContext finalVariant = depthEvidenceCollector.apply(call, variant);
-        finalVariant = convertCnvWithoutDepthSupportToBnd(finalVariant, cnvBndMinSampleFraction, cnvBndMaxStatePhred);
+        if (SVGenotypeEngine.CNV_TYPES.contains(finalVariant.getStructuralVariantType())
+                && !SVGenotypeEngineFromModel.isDepthOnlyVariant(finalVariant)
+                && !cnvHasDepthSupport(finalVariant, cnvBndMinSampleFraction, cnvBndMaxStatePhred)) {
+            finalVariant = convertCnvToBnd(finalVariant);
+        }
         if (genotypeDepthCalls && SVGenotypeEngineFromModel.isDepthOnlyVariant(finalVariant)) {
             finalVariant = depthOnlyGenotypeEngine.genotypeVariant(finalVariant);
         }
@@ -258,17 +263,9 @@ public final class SVCopyNumberPosteriors extends VariantWalker {
         return vcfHeader;
     }
 
-    protected static VariantContext convertCnvWithoutDepthSupportToBnd(final VariantContext variant,
-                                                                       final double cnvBndMinSampleFraction,
-                                                                       final double cnvBndMaxStatePhred) {
-        if (!SVGenotypeEngine.CNV_TYPES.contains(variant.getStructuralVariantType())
-                || !SVGenotypeEngineFromModel.isDepthOnlyVariant(variant)
-                || cnvHasDepthSupport(variant, cnvBndMinSampleFraction, cnvBndMaxStatePhred)) {
-            return variant;
-        }
+    private static VariantContext convertCnvToBnd(final VariantContext variant) {
         final VariantContextBuilder builder = new VariantContextBuilder(variant);
-        final Allele altAllele = Allele.create(SVGenotypeEngine.BND_SYMBOLIC_ALLELE, false);
-        builder.alleles(Lists.newArrayList(Allele.REF_N, altAllele));
+        builder.alleles(Lists.newArrayList(Allele.REF_N, SVGenotypeEngine.BND_SYMBOLIC_ALLELE));
         builder.attribute(VCFConstants.SVTYPE, StructuralVariantType.BND);
         builder.attribute(GATKSVVCFConstants.SVLEN, -1);
         return builder.make();
@@ -290,29 +287,29 @@ public final class SVCopyNumberPosteriors extends VariantWalker {
                 samplesWithDepthSupport++;
             }
         }
-        final int numCarriers = variant.getNSamples() - (int) variant.getGenotypes().stream()
+        final int numCarriers = (int) variant.getGenotypes().stream()
                 .filter(g -> VariantContextGetters.getAttributeAsInt(g, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_FALSE) == GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_TRUE)
                 .count();
         final int minSamples = (int) Math.ceil(numCarriers * cnvBndMinSampleFraction);
         return samplesWithDepthSupport >= minSamples;
     }
 
-    protected static boolean genotypeHasDepthSupport(final Genotype genotype,
-                                                     final StructuralVariantType svType,
-                                                     final double cnvBndMaxStatePhred) {
+    private static boolean genotypeHasDepthSupport(final Genotype genotype,
+                                                   final StructuralVariantType svType,
+                                                   final double cnvBndMaxStatePhred) {
         final CopyNumberPosteriorDistribution copyStatePosterior = SVGenotypeEngineDepthOnly.getCopyNumberStatePosterior(genotype);
         final List<IntegerCopyNumberState> states = copyStatePosterior.getIntegerCopyNumberStateList();
         final int samplePloidy = SVGenotypeEngineFromModel.getNeutralCopyNumber(genotype);
         if (svType.equals(StructuralVariantType.DEL)) {
             for (int i = 0; i < samplePloidy; i++) {
-                if (copyStatePosterior.getCopyNumberPosterior(states.get(i)) <= cnvBndMaxStatePhred) {
+                if (QualityUtils.logProbToPhred(copyStatePosterior.getCopyNumberPosterior(states.get(i))) <= cnvBndMaxStatePhred) {
                     return true;
                 }
             }
         } else {
             // DUP or CNV
             for (int i = samplePloidy + 1; i < states.size(); i++) {
-                if (copyStatePosterior.getCopyNumberPosterior(states.get(i)) <= cnvBndMaxStatePhred) {
+                if (QualityUtils.logProbToPhred(copyStatePosterior.getCopyNumberPosterior(states.get(i))) <= cnvBndMaxStatePhred) {
                     return true;
                 }
             }
