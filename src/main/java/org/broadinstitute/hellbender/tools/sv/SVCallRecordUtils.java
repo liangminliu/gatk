@@ -2,10 +2,8 @@ package org.broadinstitute.hellbender.tools.sv;
 
 import com.google.common.collect.Lists;
 import htsjdk.samtools.SAMSequenceDictionary;
-import htsjdk.variant.variantcontext.Allele;
-import htsjdk.variant.variantcontext.Genotype;
-import htsjdk.variant.variantcontext.GenotypeBuilder;
-import htsjdk.variant.variantcontext.VariantContextBuilder;
+import htsjdk.samtools.util.IntervalTree;
+import htsjdk.variant.variantcontext.*;
 import htsjdk.variant.vcf.VCFConstants;
 import org.broadinstitute.hellbender.tools.spark.sv.utils.GATKSVVCFConstants;
 import org.broadinstitute.hellbender.utils.IntervalUtils;
@@ -15,6 +13,7 @@ import org.broadinstitute.hellbender.utils.codecs.SVCallRecordCodec;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public final class SVCallRecordUtils {
 
@@ -33,15 +32,15 @@ public final class SVCallRecordUtils {
         builder.attribute(GATKSVVCFConstants.END2_ATTRIBUTE, call.getPosition2());
         builder.attribute(GATKSVVCFConstants.SVLEN, call.getLength());
         builder.attribute(GATKSVVCFConstants.SVTYPE, call.getType());
-        builder.attribute(SVCluster.STRANDS_ATTRIBUTE, getStrandString(call));
-        builder.attribute(SVCluster.ALGORITHMS_ATTRIBUTE, call.getAlgorithms());
+        builder.attribute(GATKSVVCFConstants.STRANDS_ATTRIBUTE, getStrandString(call));
+        builder.attribute(GATKSVVCFConstants.ALGORITHMS_ATTRIBUTE, call.getAlgorithms());
         final List<Genotype> genotypes = new ArrayList<>();
         for (final String sample : samples) {
             final GenotypeBuilder genotypeBuilder = new GenotypeBuilder(sample);
             if (call.getSamples().contains(sample)) {
-                genotypeBuilder.attribute(SVCluster.RAW_CALL_ATTRIBUTE, SVCluster.RAW_CALL_ATTRIBUTE_TRUE);
+                genotypeBuilder.attribute(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_TRUE);
             } else {
-                genotypeBuilder.attribute(SVCluster.RAW_CALL_ATTRIBUTE, SVCluster.RAW_CALL_ATTRIBUTE_FALSE);
+                genotypeBuilder.attribute(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_FALSE);
             }
             genotypes.add(genotypeBuilder.make());
         }
@@ -52,21 +51,23 @@ public final class SVCallRecordUtils {
     public static VariantContextBuilder getVariantWithEvidenceBuilder(final SVCallRecordWithEvidence call,
                                                                       final Collection<String> samples) {
         final VariantContextBuilder builder = getVariantBuilder(call, samples);
-        final Map<String,Integer> startSplitReadCounts = getSplitReadCountsAtPosition(call.getStartSplitReadSites(), call.getStart());
-        final Map<String,Integer> endSplitReadCounts = getSplitReadCountsAtPosition(call.getEndSplitReadSites(), call.getEnd());
+        final SplitReadSite startSplitReadCounts = getSplitReadCountsAtPosition(call.getStartSplitReadSites(), call.getStart());
+        final SplitReadSite endSplitReadCounts = getSplitReadCountsAtPosition(call.getEndSplitReadSites(), call.getEnd());
         final Map<String,Integer> discordantPairCounts = getDiscordantPairCountsMap(call.getDiscordantPairs());
         final List<Genotype> genotypes = builder.getGenotypes();
         final List<Genotype> newGenotypes = new ArrayList<>(genotypes.size());
         for (final Genotype genotype : genotypes) {
             final String sample = genotype.getSampleName();
             final GenotypeBuilder genotypeBuilder = new GenotypeBuilder(sample);
-            genotypeBuilder.attribute(SVCluster.START_SPLIT_READ_COUNT_ATTRIBUTE, startSplitReadCounts.getOrDefault(sample, 0));
-            genotypeBuilder.attribute(SVCluster.END_SPLIT_READ_COUNT_ATTRIBUTE, endSplitReadCounts.getOrDefault(sample, 0));
-            genotypeBuilder.attribute(SVCluster.DISCORDANT_PAIR_COUNT_ATTRIBUTE, discordantPairCounts.getOrDefault(sample, 0));
+            final int startCount = startSplitReadCounts.hasSample(sample) ? startSplitReadCounts.getCount(sample) : 0;
+            final int endCount = endSplitReadCounts.hasSample(sample) ? startSplitReadCounts.getCount(sample) : 0;
+            genotypeBuilder.attribute(GATKSVVCFConstants.START_SPLIT_READ_COUNT_ATTRIBUTE, startCount);
+            genotypeBuilder.attribute(GATKSVVCFConstants.END_SPLIT_READ_COUNT_ATTRIBUTE, endCount);
+            genotypeBuilder.attribute(GATKSVVCFConstants.DISCORDANT_PAIR_COUNT_ATTRIBUTE, discordantPairCounts.getOrDefault(sample, 0));
             if (call.getSamples().contains(sample)) {
-                genotypeBuilder.attribute(SVCluster.RAW_CALL_ATTRIBUTE, SVCluster.RAW_CALL_ATTRIBUTE_TRUE);
+                genotypeBuilder.attribute(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_TRUE);
             } else {
-                genotypeBuilder.attribute(SVCluster.RAW_CALL_ATTRIBUTE, SVCluster.RAW_CALL_ATTRIBUTE_FALSE);
+                genotypeBuilder.attribute(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_FALSE);
             }
             newGenotypes.add(genotypeBuilder.make());
         }
@@ -82,7 +83,7 @@ public final class SVCallRecordUtils {
         return strand ? SVCallRecordCodec.STRAND_PLUS : SVCallRecordCodec.STRAND_MINUS;
     }
 
-    private static Map<String,Integer> getSplitReadCountsAtPosition(final List<SplitReadSite> sites, final int pos) {
+    private static SplitReadSite getSplitReadCountsAtPosition(final List<SplitReadSite> sites, final int pos) {
         Utils.nonNull(sites);
         Utils.validateArg(pos > 0, "Non-positive position");
         if (sites.stream().map(SplitReadSite::getPosition).distinct().count() != sites.size()) {
@@ -90,9 +91,8 @@ public final class SVCallRecordUtils {
         }
         return sites.stream()
                 .filter(s -> s.getPosition() == pos)
-                .map(SplitReadSite::getSampleCountsMap)
                 .findAny()
-                .orElse(Collections.emptyMap());
+                .orElse(null);
     }
 
     private static Map<String,Integer> getDiscordantPairCountsMap(final Collection<DiscordantPairEvidence> discordantPairs) {
@@ -122,5 +122,69 @@ public final class SVCallRecordUtils {
         // Type
         final int compareType = first.getType().compareTo(second.getType());
         return compareType;
+    }
+
+    public static boolean isValidSize(final SVCallRecord call, final int minEventSize) {
+        return call.getType().equals(StructuralVariantType.BND) || call.getLength() >= minEventSize;
+    }
+
+    public static <T> boolean intervalIsIncluded(final SVCallRecord call, final Map<String, IntervalTree<T>> includedIntervalTreeMap,
+                                                 final double minDepthOnlyIncludeOverlap) {
+        if (SVDepthOnlyCallDefragmenter.isDepthOnlyCall(call)) {
+            return intervalIsIncludedDepthOnly(call, includedIntervalTreeMap, minDepthOnlyIncludeOverlap);
+        }
+        return intervalIsIncludedNonDepthOnly(call, includedIntervalTreeMap);
+    }
+
+    private static <T> boolean intervalIsIncludedNonDepthOnly(final SVCallRecord call, final Map<String,IntervalTree<T>> includedIntervalTreeMap) {
+        final IntervalTree<T> startTree = includedIntervalTreeMap.get(call.getContig());
+        if (startTree == null) {
+            return false;
+        }
+        final IntervalTree<T> endTree = includedIntervalTreeMap.get(call.getContig2());
+        if (endTree == null) {
+            return false;
+        }
+        return startTree.overlappers(call.getStart(), call.getStart() + 1).hasNext()
+                && endTree.overlappers(call.getEnd(), call.getEnd() + 1).hasNext();
+    }
+
+    private static <T> boolean intervalIsIncludedDepthOnly(final SVCallRecord call, final Map<String,IntervalTree<T>> includedIntervalTreeMap,
+                                                           final double minDepthOnlyIncludeOverlap) {
+        final IntervalTree<T> tree = includedIntervalTreeMap.get(call.getContig());
+        if (tree == null) {
+            return false;
+        }
+        final double overlapFraction = totalOverlap(call.getStart(), call.getEnd(), tree) / (double) call.getLength();
+        return overlapFraction >= minDepthOnlyIncludeOverlap;
+    }
+
+    private static <T> long totalOverlap(final int start, final int end, final IntervalTree<T> tree) {
+        final Iterator<IntervalTree.Node<T>> iter = tree.overlappers(start, end);
+        long overlap = 0;
+        while (iter.hasNext()) {
+            final IntervalTree.Node<T> node = iter.next();
+            overlap += intersectionLength(start, end, node.getStart(), node.getEnd());
+        }
+        return overlap;
+    }
+
+    private static long intersectionLength(final int start1, final int end1, final int start2, final int end2) {
+        return Math.max(0, Math.min(end1, end2) - Math.max(start1, start2) + 1);
+    }
+
+    public static Stream<SVCallRecordWithEvidence> convertInversionsToBreakends(final SVCallRecordWithEvidence call) {
+        if (!call.getType().equals(StructuralVariantType.INV)) {
+            return Stream.of(call);
+        }
+        final SVCallRecordWithEvidence positiveBreakend = new SVCallRecordWithEvidence(call.getId(), call.getContig(),
+                call.getStart(), call.getEnd(), true, true, StructuralVariantType.BND, -1,
+                call.getAlgorithms(), call.getGenotypes(), call.getStartSplitReadSites(), call.getEndSplitReadSites(),
+                call.getDiscordantPairs());
+        final SVCallRecordWithEvidence negativeBreakend = new SVCallRecordWithEvidence(call.getId(), call.getContig(),
+                call.getStart(), call.getEnd(), false, false, StructuralVariantType.BND, -1,
+                call.getAlgorithms(), call.getGenotypes(), call.getStartSplitReadSites(), call.getEndSplitReadSites(),
+                call.getDiscordantPairs());
+        return Stream.of(positiveBreakend, negativeBreakend);
     }
 }

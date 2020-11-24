@@ -14,6 +14,7 @@ import org.broadinstitute.barclay.help.DocumentedFeature;
 import org.broadinstitute.hellbender.cmdline.programgroups.CoverageAnalysisProgramGroup;
 import org.broadinstitute.hellbender.engine.*;
 import org.broadinstitute.hellbender.exceptions.UserException;
+import org.broadinstitute.hellbender.tools.spark.sv.utils.GATKSVVCFConstants;
 import org.broadinstitute.hellbender.tools.spark.sv.utils.SVUtils;
 import org.broadinstitute.hellbender.utils.Utils;
 
@@ -123,7 +124,7 @@ public final class SVShardVcfByPloidy extends VariantWalker {
 
         private ShardWriter checkForAndPossiblyCreateNewShard(final VariantContext baseVariant) {
             final Collection<Map.Entry<Integer, List<Genotype>>> genotypesByPloidy = baseVariant.getGenotypes().stream()
-                    .collect(Collectors.groupingBy(g -> Integer.valueOf((String)g.getExtendedAttribute(SVGenotypeEngine.NEUTRAL_COPY_NUMBER_KEY)), Collectors.toList()))
+                    .collect(Collectors.groupingBy(g -> Integer.valueOf((String)g.getExtendedAttribute(GATKSVVCFConstants.NEUTRAL_COPY_NUMBER_KEY)), Collectors.toList()))
                     .entrySet();
             final ShardIndex index = new ShardIndex();
             for (final Map.Entry<Integer, List<Genotype>> entry : genotypesByPloidy) {

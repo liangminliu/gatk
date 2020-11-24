@@ -3,6 +3,7 @@ package org.broadinstitute.hellbender.tools.sv;
 import com.google.common.collect.Lists;
 import htsjdk.variant.variantcontext.*;
 import org.broadinstitute.hellbender.exceptions.UserException;
+import org.broadinstitute.hellbender.tools.spark.sv.utils.GATKSVVCFConstants;
 import org.broadinstitute.hellbender.utils.MathUtils;
 import org.broadinstitute.hellbender.utils.QualityUtils;
 import org.broadinstitute.hellbender.utils.Utils;
@@ -16,18 +17,6 @@ import java.util.stream.IntStream;
 
 public class SVGenotypeEngine {
 
-    public static final String COPY_NUMBER_LOG_POSTERIORS_KEY = "CNLP";
-    public static final String NEUTRAL_COPY_NUMBER_KEY = "NCN";
-    public static final String COPY_NUMBER_FIELD = "CN";
-    public static final String PAIRED_END_PROB_FIELD = "PPE";
-    public static final String FIRST_SPLIT_READ_PROB_FIELD = "PSR1";
-    public static final String SECOND_SPLIT_READ_PROB_FIELD = "PSR2";
-    public static final String PAIRED_END_BACKGROUND_FIELD = "EPE";
-    public static final String FIRST_SPLIT_READ_BACKGROUND_FIELD = "ESR1";
-    public static final String SECOND_SPLIT_READ_BACKGROUND_FIELD = "ESR2";
-    public static final String PAIRED_END_MEAN_BIAS_FIELD = "PHI_PE";
-    public static final String FIRST_SPLIT_READ_MEAN_BIAS_FIELD = "PHI_SR1";
-    public static final String SECOND_SPLIT_READ_MEAN_BIAS_FIELD = "PHI_SR2";
     public static final Allele DEFAULT_REF_ALLELE = Allele.REF_N;
     public static final String BND_SYMBOLIC_ALLELE = "<" + StructuralVariantType.BND.name() + ">";
     public static final List<StructuralVariantType> CNV_TYPES = Lists.newArrayList(StructuralVariantType.DEL, StructuralVariantType.DUP);
@@ -116,7 +105,7 @@ public class SVGenotypeEngine {
 
         final GenotypeBuilder builder = new GenotypeBuilder(genotype);
         builder.alleles(alleles);
-        builder.attribute(COPY_NUMBER_FIELD, copyNumber);
+        builder.attribute(GATKSVVCFConstants.COPY_NUMBER_FIELD, copyNumber);
         builder.GQ(genotypeQualityInt);
         builder.PL(genotypeLikelihoodsInt);
         return builder.make();

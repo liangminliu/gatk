@@ -7,6 +7,7 @@ import htsjdk.variant.variantcontext.VariantContextBuilder;
 import htsjdk.variant.vcf.*;
 import org.broadinstitute.hellbender.tools.copynumber.formats.records.CopyNumberPosteriorDistribution;
 import org.broadinstitute.hellbender.tools.copynumber.gcnv.IntegerCopyNumberState;
+import org.broadinstitute.hellbender.tools.spark.sv.utils.GATKSVVCFConstants;
 import org.broadinstitute.hellbender.tools.spark.sv.utils.SVUtils;
 import org.broadinstitute.hellbender.utils.MathUtils;
 import org.broadinstitute.hellbender.utils.NaturalLogUtils;
@@ -27,7 +28,7 @@ public class SVGenotypeEngineDepthOnly extends SVGenotypeEngine {
         lines.add(VCFStandardHeaderLines.getFormatLine(VCFConstants.GENOTYPE_KEY, true));
         lines.add(VCFStandardHeaderLines.getFormatLine(VCFConstants.GENOTYPE_QUALITY_KEY, true));
         lines.add(VCFStandardHeaderLines.getFormatLine(VCFConstants.GENOTYPE_PL_KEY, true));
-        lines.add(new VCFFormatHeaderLine(SVGenotypeEngine.COPY_NUMBER_FIELD, 1, VCFHeaderLineType.Integer, "Copy number"));
+        lines.add(new VCFFormatHeaderLine(GATKSVVCFConstants.COPY_NUMBER_FIELD, 1, VCFHeaderLineType.Integer, "Copy number"));
         return lines;
     }
 
@@ -56,9 +57,9 @@ public class SVGenotypeEngineDepthOnly extends SVGenotypeEngine {
     }
 
     public static CopyNumberPosteriorDistribution getCopyNumberStatePosterior(final Genotype genotype) {
-        Utils.validateArg(genotype.hasExtendedAttribute(SVGenotypeEngine.COPY_NUMBER_LOG_POSTERIORS_KEY),
-                "Variant does not have attribute " + SVGenotypeEngine.COPY_NUMBER_LOG_POSTERIORS_KEY);
-        final int[] copyStateQualsRaw = VariantContextGetters.getAttributeAsIntArray(genotype, SVGenotypeEngine.COPY_NUMBER_LOG_POSTERIORS_KEY, null, 0);
+        Utils.validateArg(genotype.hasExtendedAttribute(GATKSVVCFConstants.COPY_NUMBER_LOG_POSTERIORS_KEY),
+                "Variant does not have attribute " + GATKSVVCFConstants.COPY_NUMBER_LOG_POSTERIORS_KEY);
+        final int[] copyStateQualsRaw = VariantContextGetters.getAttributeAsIntArray(genotype, GATKSVVCFConstants.COPY_NUMBER_LOG_POSTERIORS_KEY, null, 0);
         final double[] copyStateQuals = IntStream.of(copyStateQualsRaw).mapToDouble(x -> NaturalLogUtils.qualToLogErrorProb(x)).toArray();
         NaturalLogUtils.normalizeLog(copyStateQuals);
 

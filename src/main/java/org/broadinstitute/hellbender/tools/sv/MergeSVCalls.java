@@ -200,8 +200,8 @@ public final class MergeSVCalls extends GATKTool {
             // Set raw call attribute true if at least one is true
             final boolean hasCall = contexts.stream().map(c -> c.get(sample))
                     .filter(Objects::nonNull)
-                    .anyMatch(g -> VariantContextGetters.getAttributeAsInt(g, SVCluster.RAW_CALL_ATTRIBUTE, SVCluster.RAW_CALL_ATTRIBUTE_FALSE) == SVCluster.RAW_CALL_ATTRIBUTE_TRUE);
-            final GenotypeBuilder builder = new GenotypeBuilder(sample).attribute(SVCluster.RAW_CALL_ATTRIBUTE, hasCall ? SVCluster.RAW_CALL_ATTRIBUTE_TRUE : SVCluster.RAW_CALL_ATTRIBUTE_FALSE);
+                    .anyMatch(g -> VariantContextGetters.getAttributeAsInt(g, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_FALSE) == GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_TRUE);
+            final GenotypeBuilder builder = new GenotypeBuilder(sample).attribute(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, hasCall ? GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_TRUE : GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_FALSE);
             newGenotypes.add(builder.make());
         }
 
@@ -247,7 +247,7 @@ public final class MergeSVCalls extends GATKTool {
         final boolean isDel = type.equals(StructuralVariantType.DEL);
         final boolean startStrand = isDel;
         final boolean endStrand = !isDel;
-        final List<String> algorithms = Collections.singletonList(SVCluster.DEPTH_ALGORITHM);
+        final List<String> algorithms = Collections.singletonList(GATKSVVCFConstants.DEPTH_ALGORITHM);
         // Make genotypes het to play nicely with the defragmenter
         final List<Genotype> genotypes = samples.stream().map(MergeSVCalls::buildHetGenotype).collect(Collectors.toList());
         final String id = String.format("cnmops_%s_%s_%d_%d", type.toString(), contig, start, end);
@@ -312,9 +312,9 @@ public final class MergeSVCalls extends GATKTool {
         header.addMetaDataLine(GATKSVVCFHeaderLines.getInfoLine(GATKSVVCFConstants.SVTYPE));
         header.addMetaDataLine(new VCFInfoHeaderLine(GATKSVVCFConstants.END2_ATTRIBUTE, 1, VCFHeaderLineType.String, "Second position"));
         header.addMetaDataLine(new VCFInfoHeaderLine(GATKSVVCFConstants.CONTIG2_ATTRIBUTE, 1, VCFHeaderLineType.String, "Second contig"));
-        header.addMetaDataLine(new VCFInfoHeaderLine(SVCluster.STRANDS_ATTRIBUTE, 1, VCFHeaderLineType.String, "First and second strands"));
-        header.addMetaDataLine(new VCFInfoHeaderLine(SVCluster.ALGORITHMS_ATTRIBUTE, 1, VCFHeaderLineType.String, "List of calling algorithms"));
-        header.addMetaDataLine(new VCFFormatHeaderLine(SVCluster.RAW_CALL_ATTRIBUTE, 1, VCFHeaderLineType.Integer, "Sample non-reference in raw calls"));
+        header.addMetaDataLine(new VCFInfoHeaderLine(GATKSVVCFConstants.STRANDS_ATTRIBUTE, 1, VCFHeaderLineType.String, "First and second strands"));
+        header.addMetaDataLine(new VCFInfoHeaderLine(GATKSVVCFConstants.ALGORITHMS_ATTRIBUTE, 1, VCFHeaderLineType.String, "List of calling algorithms"));
+        header.addMetaDataLine(new VCFFormatHeaderLine(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, 1, VCFHeaderLineType.Integer, "Sample non-reference in raw calls"));
         return header;
     }
 }

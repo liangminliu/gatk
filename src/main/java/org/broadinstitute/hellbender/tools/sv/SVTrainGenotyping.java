@@ -156,11 +156,11 @@ public class SVTrainGenotyping extends TwoPassVariantWalker {
     );
 
     public static List<String> FORMAT_FIELDS = Lists.newArrayList(
-            SVCluster.DISCORDANT_PAIR_COUNT_ATTRIBUTE,
-            SVCluster.START_SPLIT_READ_COUNT_ATTRIBUTE,
-            SVCluster.END_SPLIT_READ_COUNT_ATTRIBUTE,
-            SVGenotypeEngine.NEUTRAL_COPY_NUMBER_KEY,
-            SVGenotypeEngine.COPY_NUMBER_LOG_POSTERIORS_KEY
+            GATKSVVCFConstants.DISCORDANT_PAIR_COUNT_ATTRIBUTE,
+            GATKSVVCFConstants.START_SPLIT_READ_COUNT_ATTRIBUTE,
+            GATKSVVCFConstants.END_SPLIT_READ_COUNT_ATTRIBUTE,
+            GATKSVVCFConstants.NEUTRAL_COPY_NUMBER_KEY,
+            GATKSVVCFConstants.COPY_NUMBER_LOG_POSTERIORS_KEY
     );
 
     @Override
@@ -289,7 +289,7 @@ public class SVTrainGenotyping extends TwoPassVariantWalker {
     }
 
     private boolean isDepthOnly(final VariantContext variant) {
-        return variant.getAttributeAsString(SVCluster.ALGORITHMS_ATTRIBUTE, "").equals(SVCluster.DEPTH_ALGORITHM);
+        return variant.getAttributeAsString(GATKSVVCFConstants.ALGORITHMS_ATTRIBUTE, "").equals(GATKSVVCFConstants.DEPTH_ALGORITHM);
     }
 
     private File createSampleList() {

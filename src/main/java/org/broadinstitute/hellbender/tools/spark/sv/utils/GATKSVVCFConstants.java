@@ -97,6 +97,28 @@ public final class GATKSVVCFConstants {
     public static final String LOW_QS_SCORE_FILTER_KEY = "LOW_QS";
     public static final String FREQUENCY_FILTER_KEY = "FREQ";
 
+    // evidence metrics
+    public static final String COPY_NUMBER_LOG_POSTERIORS_KEY = "CNLP";
+    public static final String NEUTRAL_COPY_NUMBER_KEY = "NCN";
+    public static String START_SPLIT_READ_COUNT_ATTRIBUTE = "SR1";
+    public static String END_SPLIT_READ_COUNT_ATTRIBUTE = "SR2";
+    public static String DISCORDANT_PAIR_COUNT_ATTRIBUTE = "PE";
+    public static String RAW_CALL_ATTRIBUTE = "RC";
+    public static int RAW_CALL_ATTRIBUTE_TRUE = 1;
+    public static int RAW_CALL_ATTRIBUTE_FALSE = 0;
+
+    // genotyping
+    public static final String COPY_NUMBER_FIELD = "CN";
+    public static final String PAIRED_END_PROB_FIELD = "PPE";
+    public static final String FIRST_SPLIT_READ_PROB_FIELD = "PSR1";
+    public static final String SECOND_SPLIT_READ_PROB_FIELD = "PSR2";
+    public static final String PAIRED_END_BACKGROUND_FIELD = "EPE";
+    public static final String FIRST_SPLIT_READ_BACKGROUND_FIELD = "ESR1";
+    public static final String SECOND_SPLIT_READ_BACKGROUND_FIELD = "ESR2";
+    public static final String PAIRED_END_MEAN_BIAS_FIELD = "PHI_PE";
+    public static final String FIRST_SPLIT_READ_MEAN_BIAS_FIELD = "PHI_SR1";
+    public static final String SECOND_SPLIT_READ_MEAN_BIAS_FIELD = "PHI_SR2";
+
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 }

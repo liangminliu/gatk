@@ -7,6 +7,7 @@ import htsjdk.variant.variantcontext.VariantContextBuilder;
 import htsjdk.variant.vcf.*;
 import org.broadinstitute.hellbender.exceptions.GATKException;
 import org.broadinstitute.hellbender.exceptions.UserException;
+import org.broadinstitute.hellbender.tools.spark.sv.utils.GATKSVVCFConstants;
 import org.broadinstitute.hellbender.utils.Utils;
 import org.broadinstitute.hellbender.utils.variant.VariantContextGetters;
 
@@ -20,35 +21,35 @@ public class SVGenotypeEngineFromModel extends SVGenotypeEngine {
     private static final String SECOND_DIM_SEPARATOR = ",";
 
     public static int getNeutralCopyNumber(final Genotype genotype) {
-        Utils.validateArg(genotype.hasExtendedAttribute(SVGenotypeEngine.NEUTRAL_COPY_NUMBER_KEY),
-                "Genotype missing format field " + SVGenotypeEngine.NEUTRAL_COPY_NUMBER_KEY
+        Utils.validateArg(genotype.hasExtendedAttribute(GATKSVVCFConstants.NEUTRAL_COPY_NUMBER_KEY),
+                "Genotype missing format field " + GATKSVVCFConstants.NEUTRAL_COPY_NUMBER_KEY
                         + " for sample " + genotype.getSampleName());
         Utils.nonNull(genotype);
-        return VariantContextGetters.getAttributeAsInt(genotype, SVGenotypeEngine.NEUTRAL_COPY_NUMBER_KEY, 0);
+        return VariantContextGetters.getAttributeAsInt(genotype, GATKSVVCFConstants.NEUTRAL_COPY_NUMBER_KEY, 0);
     }
 
     public static boolean isDepthOnlyVariant(final VariantContext variant) {
-        if (!variant.hasAttribute(SVCluster.ALGORITHMS_ATTRIBUTE)) {
-            throw new GATKException("Variant record is missing attribute: " + SVCluster.ALGORITHMS_ATTRIBUTE);
+        if (!variant.hasAttribute(GATKSVVCFConstants.ALGORITHMS_ATTRIBUTE)) {
+            throw new GATKException("Variant record is missing attribute: " + GATKSVVCFConstants.ALGORITHMS_ATTRIBUTE);
         }
-        final List<String> algorithms = variant.getAttributeAsStringList(SVCluster.ALGORITHMS_ATTRIBUTE, "");
-        return algorithms.size() == 1 && algorithms.contains(SVCluster.DEPTH_ALGORITHM);
+        final List<String> algorithms = variant.getAttributeAsStringList(GATKSVVCFConstants.ALGORITHMS_ATTRIBUTE, "");
+        return algorithms.size() == 1 && algorithms.contains(GATKSVVCFConstants.DEPTH_ALGORITHM);
     }
 
     public static List<VCFHeaderLine> getVcfHeaderMetadata() {
         final List<VCFHeaderLine> lines = new ArrayList<>();
         lines.add(VCFStandardHeaderLines.getFormatLine(VCFConstants.GENOTYPE_QUALITY_KEY, true));
         lines.add(VCFStandardHeaderLines.getFormatLine(VCFConstants.GENOTYPE_PL_KEY, true));
-        lines.add(new VCFFormatHeaderLine(SVGenotypeEngine.COPY_NUMBER_FIELD, 1, VCFHeaderLineType.Integer, "Copy number"));
-        lines.add(new VCFInfoHeaderLine(SVGenotypeEngine.PAIRED_END_PROB_FIELD, 1, VCFHeaderLineType.Float, "Paired-end read support probability"));
-        lines.add(new VCFInfoHeaderLine(SVGenotypeEngine.FIRST_SPLIT_READ_PROB_FIELD, 1, VCFHeaderLineType.Float, "First split read support probability"));
-        lines.add(new VCFInfoHeaderLine(SVGenotypeEngine.SECOND_SPLIT_READ_PROB_FIELD, 1, VCFHeaderLineType.Float, "Second read support probability"));
-        lines.add(new VCFInfoHeaderLine(SVGenotypeEngine.PAIRED_END_BACKGROUND_FIELD, 1, VCFHeaderLineType.Float, "Paired-end read mean background rate"));
-        lines.add(new VCFInfoHeaderLine(SVGenotypeEngine.FIRST_SPLIT_READ_BACKGROUND_FIELD, 1, VCFHeaderLineType.Float, "First split read mean background rate"));
-        lines.add(new VCFInfoHeaderLine(SVGenotypeEngine.SECOND_SPLIT_READ_BACKGROUND_FIELD, 1, VCFHeaderLineType.Float, "Second split read mean background rate"));
-        lines.add(new VCFInfoHeaderLine(SVGenotypeEngine.PAIRED_END_MEAN_BIAS_FIELD, 1, VCFHeaderLineType.Float, "Paired-end read mean bias"));
-        lines.add(new VCFInfoHeaderLine(SVGenotypeEngine.FIRST_SPLIT_READ_MEAN_BIAS_FIELD, 1, VCFHeaderLineType.Float, "First split read mean bias"));
-        lines.add(new VCFInfoHeaderLine(SVGenotypeEngine.SECOND_SPLIT_READ_MEAN_BIAS_FIELD, 1, VCFHeaderLineType.Float, "Second split read mean bias"));
+        lines.add(new VCFFormatHeaderLine(GATKSVVCFConstants.COPY_NUMBER_FIELD, 1, VCFHeaderLineType.Integer, "Copy number"));
+        lines.add(new VCFInfoHeaderLine(GATKSVVCFConstants.PAIRED_END_PROB_FIELD, 1, VCFHeaderLineType.Float, "Paired-end read support probability"));
+        lines.add(new VCFInfoHeaderLine(GATKSVVCFConstants.FIRST_SPLIT_READ_PROB_FIELD, 1, VCFHeaderLineType.Float, "First split read support probability"));
+        lines.add(new VCFInfoHeaderLine(GATKSVVCFConstants.SECOND_SPLIT_READ_PROB_FIELD, 1, VCFHeaderLineType.Float, "Second read support probability"));
+        lines.add(new VCFInfoHeaderLine(GATKSVVCFConstants.PAIRED_END_BACKGROUND_FIELD, 1, VCFHeaderLineType.Float, "Paired-end read mean background rate"));
+        lines.add(new VCFInfoHeaderLine(GATKSVVCFConstants.FIRST_SPLIT_READ_BACKGROUND_FIELD, 1, VCFHeaderLineType.Float, "First split read mean background rate"));
+        lines.add(new VCFInfoHeaderLine(GATKSVVCFConstants.SECOND_SPLIT_READ_BACKGROUND_FIELD, 1, VCFHeaderLineType.Float, "Second split read mean background rate"));
+        lines.add(new VCFInfoHeaderLine(GATKSVVCFConstants.PAIRED_END_MEAN_BIAS_FIELD, 1, VCFHeaderLineType.Float, "Paired-end read mean bias"));
+        lines.add(new VCFInfoHeaderLine(GATKSVVCFConstants.FIRST_SPLIT_READ_MEAN_BIAS_FIELD, 1, VCFHeaderLineType.Float, "First split read mean bias"));
+        lines.add(new VCFInfoHeaderLine(GATKSVVCFConstants.SECOND_SPLIT_READ_MEAN_BIAS_FIELD, 1, VCFHeaderLineType.Float, "Second split read mean bias"));
         return lines;
     }
 
@@ -62,15 +63,15 @@ public class SVGenotypeEngineFromModel extends SVGenotypeEngine {
         }
 
         final VariantContextBuilder builder = new VariantContextBuilder(variant);
-        builder.attribute(SVGenotypeEngine.PAIRED_END_PROB_FIELD, modelOutput.getP_m_pe());
-        builder.attribute(SVGenotypeEngine.FIRST_SPLIT_READ_PROB_FIELD, modelOutput.getP_m_sr1());
-        builder.attribute(SVGenotypeEngine.SECOND_SPLIT_READ_PROB_FIELD, modelOutput.getP_m_sr2());
-        builder.attribute(SVGenotypeEngine.PAIRED_END_BACKGROUND_FIELD, modelOutput.getEps_pe());
-        builder.attribute(SVGenotypeEngine.FIRST_SPLIT_READ_BACKGROUND_FIELD, modelOutput.getEps_sr1());
-        builder.attribute(SVGenotypeEngine.SECOND_SPLIT_READ_BACKGROUND_FIELD, modelOutput.getEps_sr2());
-        builder.attribute(SVGenotypeEngine.PAIRED_END_MEAN_BIAS_FIELD, modelOutput.getPhi_pe());
-        builder.attribute(SVGenotypeEngine.FIRST_SPLIT_READ_MEAN_BIAS_FIELD, modelOutput.getPhi_sr1());
-        builder.attribute(SVGenotypeEngine.SECOND_SPLIT_READ_MEAN_BIAS_FIELD, modelOutput.getPhi_sr2());
+        builder.attribute(GATKSVVCFConstants.PAIRED_END_PROB_FIELD, modelOutput.getP_m_pe());
+        builder.attribute(GATKSVVCFConstants.FIRST_SPLIT_READ_PROB_FIELD, modelOutput.getP_m_sr1());
+        builder.attribute(GATKSVVCFConstants.SECOND_SPLIT_READ_PROB_FIELD, modelOutput.getP_m_sr2());
+        builder.attribute(GATKSVVCFConstants.PAIRED_END_BACKGROUND_FIELD, modelOutput.getEps_pe());
+        builder.attribute(GATKSVVCFConstants.FIRST_SPLIT_READ_BACKGROUND_FIELD, modelOutput.getEps_sr1());
+        builder.attribute(GATKSVVCFConstants.SECOND_SPLIT_READ_BACKGROUND_FIELD, modelOutput.getEps_sr2());
+        builder.attribute(GATKSVVCFConstants.PAIRED_END_MEAN_BIAS_FIELD, modelOutput.getPhi_pe());
+        builder.attribute(GATKSVVCFConstants.FIRST_SPLIT_READ_MEAN_BIAS_FIELD, modelOutput.getPhi_sr1());
+        builder.attribute(GATKSVVCFConstants.SECOND_SPLIT_READ_MEAN_BIAS_FIELD, modelOutput.getPhi_sr2());
 
         final int numSamples = modelSampleList.size();
         final StructuralVariantType svType = variant.getStructuralVariantType();

@@ -14,6 +14,7 @@ import org.broadinstitute.hellbender.cmdline.programgroups.StructuralVariantDisc
 import org.broadinstitute.hellbender.engine.*;
 import org.broadinstitute.hellbender.exceptions.GATKException;
 import org.broadinstitute.hellbender.exceptions.UserException;
+import org.broadinstitute.hellbender.tools.spark.sv.utils.GATKSVVCFConstants;
 import org.broadinstitute.hellbender.utils.io.IOUtils;
 import org.broadinstitute.hellbender.utils.python.StreamingPythonScriptExecutor;
 import org.broadinstitute.hellbender.utils.runtime.AsynchronousStreamWriter;
@@ -107,11 +108,11 @@ public class SVGenotype extends TwoPassVariantWalker {
     private List<String> sampleList;
 
     public static List<String> FORMAT_FIELDS = Lists.newArrayList(
-            SVCluster.DISCORDANT_PAIR_COUNT_ATTRIBUTE,
-            SVCluster.START_SPLIT_READ_COUNT_ATTRIBUTE,
-            SVCluster.END_SPLIT_READ_COUNT_ATTRIBUTE,
-            SVGenotypeEngine.NEUTRAL_COPY_NUMBER_KEY,
-            SVGenotypeEngine.COPY_NUMBER_LOG_POSTERIORS_KEY
+            GATKSVVCFConstants.DISCORDANT_PAIR_COUNT_ATTRIBUTE,
+            GATKSVVCFConstants.START_SPLIT_READ_COUNT_ATTRIBUTE,
+            GATKSVVCFConstants.END_SPLIT_READ_COUNT_ATTRIBUTE,
+            GATKSVVCFConstants.NEUTRAL_COPY_NUMBER_KEY,
+            GATKSVVCFConstants.COPY_NUMBER_LOG_POSTERIORS_KEY
     );
 
     @Override

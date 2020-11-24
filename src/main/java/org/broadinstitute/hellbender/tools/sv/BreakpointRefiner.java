@@ -8,16 +8,23 @@ import scala.Tuple2;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Refines variant breakpoints using split read evidence
+ */
 public class BreakpointRefiner {
 
     private final Map<String,Double> sampleCoverageMap;
+    /**
+     * Number bases that insertion split read positions can pass each other by, i.e. when left-clipped reads are to
+     * the left of the breakpoint and right-clipped reads to the right.
+     */
     private int maxInsertionSplitReadCrossDistance;
 
     public static final int DEFAULT_MAX_INSERTION_CROSS_DISTANCE = 20;
 
     public BreakpointRefiner(final Map<String,Double> sampleCoverageMap) {
         this.sampleCoverageMap = sampleCoverageMap;
-        this.maxInsertionSplitReadCrossDistance = DEFAULT_MAX_INSERTION_CROSS_DISTANCE;
+        setMaxInsertionSplitReadCrossDistance(DEFAULT_MAX_INSERTION_CROSS_DISTANCE);
     }
 
     public void setMaxInsertionSplitReadCrossDistance(final int distance) {
@@ -111,7 +118,7 @@ public class BreakpointRefiner {
 
     private double getMedianNormalizedCount(final Set<String> samples, final SplitReadSite site) {
         final Collection<Double> normalizedCounts = samples.stream()
-                .map(s -> site.getSampleCountsMap().containsKey(s) ? site.getSampleCountsMap().get(s) / sampleCoverageMap.get(s) : 0.)
+                .map(s -> site.hasSample(s) ? site.getCount(s) / sampleCoverageMap.get(s) : 0.)
                 .collect(Collectors.toList());
         return median(normalizedCounts);
     }

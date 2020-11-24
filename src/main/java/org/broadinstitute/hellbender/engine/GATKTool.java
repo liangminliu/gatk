@@ -599,11 +599,12 @@ public abstract class GATKTool extends CommandLineProgram {
     }
 
     /**
-     * Does this tool apply its own intervals logic? Tools that do should override to return true.
+     * Does this tool apply its own intervals logic? Those that do should override to return true and use
+     * {@link GATKTool#getRequestedIntervals()} to retrieve the intervals.
      *
-     * @return true if this tool should ignore intervals input
+     * @return true if this tool should ignore intervals input for traversal (-L and -XL)
      */
-    public boolean ignoresUserIntervals() {
+    public boolean ignoresIntervalsForTraversal() {
         return false;
     }
 
@@ -1037,11 +1038,12 @@ public abstract class GATKTool extends CommandLineProgram {
     }
 
     /**
-     * Returns the list of intervals to iterate, either limited to the user-supplied intervals or the entire reference genome if the tool ignores interval inputs.
+     * Returns the list of intervals to iterate, either limited to the user-supplied intervals or the entire reference
+     * genome if the tool ignores interval inputs (see {@link GATKTool#ignoresIntervalsForTraversal()}.
      * If no reference was supplied, null is returned
      */
     public List<SimpleInterval> getTraversalIntervals() {
-        return ignoresUserIntervals() ? hasReference() ? IntervalUtils.getAllIntervalsForReference(getReferenceDictionary()) : null : getRequestedIntervals();
+        return ignoresIntervalsForTraversal() ? IntervalUtils.getAllIntervalsForReference(getBestAvailableSequenceDictionary()) : getRequestedIntervals();
     }
 
     /**
@@ -1049,7 +1051,7 @@ public abstract class GATKTool extends CommandLineProgram {
      * If no reference was supplied, null is returned
      */
     public List<SimpleInterval> getRequestedIntervals() {
-        return hasUserSuppliedIntervals() ? userIntervals : hasReference() ? IntervalUtils.getAllIntervalsForReference(getReferenceDictionary()) : null;
+        return hasUserSuppliedIntervals() ? userIntervals : IntervalUtils.getAllIntervalsForReference(getBestAvailableSequenceDictionary());
     }
 
     /**
