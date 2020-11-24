@@ -21,7 +21,8 @@ import java.util.stream.Stream;
 public final class SVCallRecordUtils {
 
     public static VariantContextBuilder getVariantBuilder(final SVCallRecord call,
-                                                          final Collection<String> samples) {
+                                                          final Collection<String> samples,
+                                                          final boolean setRawCallAttribute) {
         Utils.nonNull(call);
         Utils.nonNull(samples);
         Utils.containsNoNull(samples, "Null sample found");
@@ -37,23 +38,27 @@ public final class SVCallRecordUtils {
         builder.attribute(GATKSVVCFConstants.SVTYPE, call.getType());
         builder.attribute(GATKSVVCFConstants.STRANDS_ATTRIBUTE, getStrandString(call));
         builder.attribute(GATKSVVCFConstants.ALGORITHMS_ATTRIBUTE, call.getAlgorithms());
-        final List<Genotype> genotypes = new ArrayList<>();
-        for (final String sample : samples) {
-            final GenotypeBuilder genotypeBuilder = new GenotypeBuilder(sample);
-            if (call.getSamples().contains(sample)) {
-                genotypeBuilder.attribute(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_TRUE);
-            } else {
-                genotypeBuilder.attribute(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_FALSE);
+        if (setRawCallAttribute) {
+            final List<Genotype> genotypes = new ArrayList<>();
+            for (final String sample : samples) {
+                final GenotypeBuilder genotypeBuilder = new GenotypeBuilder(sample);
+                if (call.getCarrierSamples().contains(sample)) {
+                    genotypeBuilder.attribute(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_TRUE);
+                } else {
+                    genotypeBuilder.attribute(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_FALSE);
+                }
+                genotypes.add(genotypeBuilder.make());
             }
-            genotypes.add(genotypeBuilder.make());
+            builder.genotypes(genotypes);
+        } else {
+            builder.genotypes(call.getGenotypes());
         }
-        builder.genotypes(genotypes);
         return builder;
     }
 
     public static VariantContextBuilder getVariantWithEvidenceBuilder(final SVCallRecordWithEvidence call,
                                                                       final Collection<String> samples) {
-        final VariantContextBuilder builder = getVariantBuilder(call, samples);
+        final VariantContextBuilder builder = getVariantBuilder(call, samples, false);
         final SplitReadSite startSplitReadCounts = getSplitReadCountsAtPosition(call.getStartSplitReadSites(), call.getStart());
         final SplitReadSite endSplitReadCounts = getSplitReadCountsAtPosition(call.getEndSplitReadSites(), call.getEnd());
         final Map<String,Integer> discordantPairCounts = getDiscordantPairCountsMap(call.getDiscordantPairs());
@@ -67,7 +72,7 @@ public final class SVCallRecordUtils {
             genotypeBuilder.attribute(GATKSVVCFConstants.START_SPLIT_READ_COUNT_ATTRIBUTE, startCount);
             genotypeBuilder.attribute(GATKSVVCFConstants.END_SPLIT_READ_COUNT_ATTRIBUTE, endCount);
             genotypeBuilder.attribute(GATKSVVCFConstants.DISCORDANT_PAIR_COUNT_ATTRIBUTE, discordantPairCounts.getOrDefault(sample, 0));
-            if (call.getSamples().contains(sample)) {
+            if (call.getCalledSamples().contains(sample)) {
                 genotypeBuilder.attribute(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_TRUE);
             } else {
                 genotypeBuilder.attribute(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_FALSE);

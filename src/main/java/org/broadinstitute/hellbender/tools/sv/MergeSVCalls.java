@@ -138,7 +138,7 @@ public final class MergeSVCalls extends GATKTool {
 
     @Override
     public Object onTraversalSuccess() {
-        samples = records.stream().flatMap(r -> r.getSamples().stream()).distinct().sorted().collect(Collectors.toList());
+        samples = records.stream().flatMap(r -> r.getCalledSamples().stream()).distinct().sorted().collect(Collectors.toList());
         sortAndDeduplicateRecords();
         writeVariants();
         return null;
@@ -300,7 +300,7 @@ public final class MergeSVCalls extends GATKTool {
     private void writeVariants() {
         final VariantContextWriter writer = createVCFWriter(outputFile);
         writer.writeHeader(getVcfHeader());
-        records.stream().map(r -> SVCallRecordUtils.getVariantBuilder(r, samples).make()).forEachOrdered(writer::add);
+        records.stream().map(r -> SVCallRecordUtils.getVariantBuilder(r, samples, true).make()).forEachOrdered(writer::add);
         writer.close();
     }
 

@@ -116,9 +116,9 @@ public class SVDepthOnlyCallDefragmenter extends LocatableClusterEngine<SVCallRe
         Utils.validate(a.getContig().equals(a.getContig2()), "Call A is depth-only but interchromosomal");
         Utils.validate(b.getContig().equals(b.getContig2()), "Call B is depth-only but interchromosomal");
         if (!a.getType().equals(b.getType())) return false;
-        final Set<String> sharedSamples = new LinkedHashSet<>(a.getSamples());
-        sharedSamples.retainAll(b.getSamples());
-        final double sampleOverlap = Math.min(sharedSamples.size() / (double) a.getSamples().size(), sharedSamples.size() / (double) b.getSamples().size());
+        final Set<String> sharedSamples = new LinkedHashSet<>(a.getCalledSamples());
+        sharedSamples.retainAll(b.getCalledSamples());
+        final double sampleOverlap = Math.min(sharedSamples.size() / (double) a.getCalledSamples().size(), sharedSamples.size() / (double) b.getCalledSamples().size());
         if (sampleOverlap < minSampleOverlap) return false;
         //in the single-sample case, match copy number strictly if we're looking at the same sample
         boolean copyNumbersAgree = true;

@@ -71,7 +71,7 @@ public class SVCallRecordCodec extends AsciiFeatureCodec<SVCallRecord> {
                 record.getType().name(),
                 Integer.toString(record.getLength()),
                 String.join(",", record.getAlgorithms()),
-                String.join(",", record.getSamples())
+                String.join(",", record.getCalledSamples())
         );
         return String.join(COL_DELIMITER, data);
     }

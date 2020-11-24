@@ -332,7 +332,7 @@ public final class SVCluster extends VariantWalker {
     }
 
     public VariantContext buildVariantContext(final SVCallRecordWithEvidence call) {
-        return SVCallRecordUtils.getVariantBuilder(call, samplesList).make();
+        return SVCallRecordUtils.getVariantBuilder(call, samplesList, false).make();
     }
 
 }

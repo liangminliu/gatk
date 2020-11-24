@@ -38,11 +38,11 @@ public class BreakpointRefiner {
             return call;
         }
         final Set<String> backgroundSamples = getBackgroundSamples(call);
-        final SplitReadSite refinedStartSite = getRefinedSite(call.getStartSplitReadSites(), call.getSamples(), backgroundSamples, call.getStart());
+        final SplitReadSite refinedStartSite = getRefinedSite(call.getStartSplitReadSites(), call.getCalledSamples(), backgroundSamples, call.getStart());
         final int endLowerBound = getEndLowerBound(call.getType(), call.getContig(), refinedStartSite.getPosition(), call.getContig2());
         final int defaultEndPosition = Math.max(endLowerBound, call.getEnd());
         final List<SplitReadSite> validSites = getValidEndSplitReadSites(call, endLowerBound);
-        final SplitReadSite refinedEndSite = getRefinedSite(validSites, call.getSamples(), backgroundSamples, defaultEndPosition);
+        final SplitReadSite refinedEndSite = getRefinedSite(validSites, call.getCalledSamples(), backgroundSamples, defaultEndPosition);
 
         if (call.getContig().equals(call.getContig2())) {
             return new SVCallRecordWithEvidence(
@@ -64,7 +64,7 @@ public class BreakpointRefiner {
     }
 
     private Set<String> getBackgroundSamples(final SVCallRecord call) {
-        return sampleCoverageMap.keySet().stream().filter(s -> !call.getSamples().contains(s)).collect(Collectors.toSet());
+        return sampleCoverageMap.keySet().stream().filter(s -> !call.getCalledSamples().contains(s)).collect(Collectors.toSet());
     }
 
     private int getEndLowerBound(final StructuralVariantType type, final String startContig, final int startPosition, final String endContig) {

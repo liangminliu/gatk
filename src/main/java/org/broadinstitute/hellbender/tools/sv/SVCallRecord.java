@@ -26,8 +26,9 @@ public class SVCallRecord implements Feature {
     private final StructuralVariantType type;
     private int length;
     private final List<String> algorithms;
-    private final List<Genotype> genotypes;
-    private LinkedHashSet<String> samples;
+    private final GenotypesContext genotypes;
+    private LinkedHashSet<String> calledSamples;
+    private LinkedHashSet<String> carrierSamples;
 
     private final static List<String> nonDepthCallerAttributes = Arrays.asList(
             VCFConstants.END_KEY,
@@ -152,8 +153,7 @@ public class SVCallRecord implements Feature {
         final int start = variant.getStart();
         final int end = variant.getEnd();
         final int length = end - start;
-        return new SVCallRecord(id, startContig, start, end, startStrand, startContig, end, endStrand, type, length, algorithms,
-                new ArrayList<>(variant.getGenotypes()));
+        return new SVCallRecord(id, startContig, start, end, startStrand, startContig, end, endStrand, type, length, algorithms, variant.getGenotypes());
     }
 
     public SVCallRecord(final String id,
@@ -202,11 +202,7 @@ public class SVCallRecord implements Feature {
         this.type = type;
         this.length = length;
         this.algorithms = Collections.unmodifiableList(algorithms);
-        this.genotypes = Collections.unmodifiableList(genotypes);
-        this.samples = genotypes.stream()
-                .filter(g -> !g.getType().equals(GenotypeType.NO_CALL) || g.hasExtendedAttribute(GATKSVVCFConstants.COPY_NUMBER_FORMAT)) //skip no-calls that don't have copy number (i.e. not dupe no-calls)
-                .map(Genotype::getSampleName)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
+        this.genotypes = GenotypesContext.copy(genotypes);
     }
 
     public String getId() {
@@ -256,8 +252,24 @@ public class SVCallRecord implements Feature {
         return algorithms;
     }
 
-    public Set<String> getSamples() {
-        return samples;
+    public Set<String> getCalledSamples() {
+        if (calledSamples == null) {
+            calledSamples = genotypes.stream()
+                    .filter(g -> !g.getType().equals(GenotypeType.NO_CALL) || g.hasExtendedAttribute(GATKSVVCFConstants.COPY_NUMBER_FORMAT)) //skip no-calls that don't have copy number (i.e. not dupe no-calls)
+                    .map(Genotype::getSampleName)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+        }
+        return calledSamples;
+    }
+
+    public Set<String> getCarrierSamples() {
+        if (carrierSamples == null) {
+            carrierSamples = genotypes.stream()
+                    .filter(g -> g.getType().equals(GenotypeType.HET) || g.getType().equals(GenotypeType.HOM_VAR))
+                    .map(Genotype::getSampleName)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+        }
+        return carrierSamples;
     }
 
     public List<Genotype> getGenotypes() {
@@ -303,9 +315,6 @@ public class SVCallRecord implements Feature {
         areEqual &= this.getAlgorithms().containsAll(b.getAlgorithms());
         areEqual &= b.getAlgorithms().containsAll(this.getAlgorithms());
 
-        areEqual &= this.getSamples().containsAll(b.getSamples());
-        areEqual &= b.getSamples().containsAll(this.getSamples());
-
         areEqual &= this.getGenotypes().containsAll(b.getGenotypes());
         areEqual &= b.getGenotypes().containsAll(this.getGenotypes());
 
@@ -315,6 +324,6 @@ public class SVCallRecord implements Feature {
     @Override
     public int hashCode() {
         return Objects.hash(id, algorithms, end1, contig2, strand2, genotypes,
-                length, samples, position1, contig1, strand1, type);
+                length, position1, contig1, strand1, type);
     }
 }
