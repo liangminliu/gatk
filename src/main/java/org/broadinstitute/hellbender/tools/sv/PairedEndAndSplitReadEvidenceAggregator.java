@@ -11,7 +11,7 @@ import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-public class SVEvidenceCollector {
+public class PairedEndAndSplitReadEvidenceAggregator {
 
     private final FeatureDataSource<SplitReadEvidence> splitReadSource;
     private final FeatureDataSource<DiscordantPairEvidence> discordantPairSource;
@@ -28,10 +28,10 @@ public class SVEvidenceCollector {
     public static final int DEFAULT_DISCORDANT_PAIR_INNER_PADDING = 50;
     public static final int DEFAULT_DISCORDANT_PAIR_OUTER_PADDING = 500;
 
-    public SVEvidenceCollector(final FeatureDataSource<SplitReadEvidence> splitReadSource,
-                               final FeatureDataSource<DiscordantPairEvidence> discordantPairSource,
-                               final SAMSequenceDictionary dictionary,
-                               final ProgressMeter progressMeter) {
+    public PairedEndAndSplitReadEvidenceAggregator(final FeatureDataSource<SplitReadEvidence> splitReadSource,
+                                                   final FeatureDataSource<DiscordantPairEvidence> discordantPairSource,
+                                                   final SAMSequenceDictionary dictionary,
+                                                   final ProgressMeter progressMeter) {
         this.splitReadSource = splitReadSource;
         this.discordantPairSource = discordantPairSource;
         this.dictionary = dictionary;
@@ -43,9 +43,9 @@ public class SVEvidenceCollector {
         this.progressMeter = progressMeter;
     }
 
-    public SVEvidenceCollector(final FeatureDataSource<SplitReadEvidence> splitReadSource,
-                               final FeatureDataSource<DiscordantPairEvidence> discordantPairSource,
-                               final SAMSequenceDictionary dictionary) {
+    public PairedEndAndSplitReadEvidenceAggregator(final FeatureDataSource<SplitReadEvidence> splitReadSource,
+                                                   final FeatureDataSource<DiscordantPairEvidence> discordantPairSource,
+                                                   final SAMSequenceDictionary dictionary) {
         this(splitReadSource, discordantPairSource, dictionary, null);
     }
 
@@ -73,12 +73,12 @@ public class SVEvidenceCollector {
         return discordantPairOuterPadding;
     }
 
-    public List<SVCallRecordWithEvidence> collectEvidence(final List<SVCallRecordWithEvidence> calls) {
+    public List<SVCallRecordWithEvidence> collectEvidence(final List<SVCallRecord> calls) {
         Utils.nonNull(calls);
         return processEndPositions(processStartPositions(calls));
     }
 
-    private List<SVCallRecordWithEvidence> processStartPositions(final List<SVCallRecordWithEvidence> calls) {
+    private List<SVCallRecordWithEvidence> processStartPositions(final List<SVCallRecord> calls) {
         final OverlapDetector<SimpleInterval> splitReadStartIntervalOverlapDetector = getEvidenceOverlapDetector(calls, this::getStartSplitReadInterval);
         final OverlapDetector<SimpleInterval> discordantPairIntervalOverlapDetector = getEvidenceOverlapDetector(calls, this::getDiscordantPairStartInterval);
         return calls.stream()
@@ -109,17 +109,17 @@ public class SVEvidenceCollector {
         return OverlapDetector.create(mergedIntervals);
     }
 
-    private SVCallRecordWithEvidence processDiscordantPairs(final SVCallRecordWithEvidence call,
+    private SVCallRecordWithEvidence processDiscordantPairs(final SVCallRecord call,
                                                             final OverlapDetector<SimpleInterval> discordantPairIntervalOverlapDetector) {
         Utils.nonNull(call);
         final SVCallRecordWithEvidence callWithEvidence;
         if (SVClusterEngine.isDepthOnlyCall(call)) {
-            callWithEvidence = call;
+            callWithEvidence = new SVCallRecordWithEvidence(call);
         } else {
             final List<DiscordantPairEvidence> discordantPairs = getDiscordantPairs(call, discordantPairIntervalOverlapDetector);
             callWithEvidence = new SVCallRecordWithEvidence(
                     call.getId(), call.getContig(), call.getStart(), call.getEnd(), call.getStrand1(), call.getContig2(), call.getPosition2(), call.getStrand2(),
-                    call.getType(), call.getLength(), call.getAlgorithms(), call.getGenotypes(), call.getStartSplitReadSites(), call.getEndSplitReadSites(), discordantPairs);
+                    call.getType(), call.getLength(), call.getAlgorithms(), call.getGenotypes(), Collections.emptyList(), Collections.emptyList(), discordantPairs, null);
         }
         if (progressMeter != null) {
             progressMeter.update(call.getPosition1AsInterval());
@@ -138,7 +138,7 @@ public class SVEvidenceCollector {
             final List<SplitReadSite> startSitesList = computeSites(startSplitReads, call.getStrand1());
             callWithEvidence = new SVCallRecordWithEvidence(
                     call.getId(), call.getContig(), call.getStart(), call.getEnd(), call.getStrand1(), call.getContig2(), call.getPosition2(), call.getStrand2(),
-                    call.getType(), call.getLength(), call.getAlgorithms(), call.getGenotypes(), startSitesList, call.getEndSplitReadSites(), call.getDiscordantPairs());
+                    call.getType(), call.getLength(), call.getAlgorithms(), call.getGenotypes(), startSitesList, call.getEndSplitReadSites(), call.getDiscordantPairs(), null);
         }
         if (progressMeter != null) {
             progressMeter.update(call.getPosition1AsInterval());
@@ -157,7 +157,7 @@ public class SVEvidenceCollector {
             final List<SplitReadSite> endSitesList = computeSites(endSplitReads, call.getStrand2());
             refinedCall = new SVCallRecordWithEvidence(
                     call.getId(), call.getContig(), call.getStart(), call.getEnd(), call.getStrand1(), call.getContig2(), call.getPosition2(), call.getStrand2(),
-                    call.getType(), call.getLength(), call.getAlgorithms(), call.getGenotypes(), call.getStartSplitReadSites(), endSitesList, call.getDiscordantPairs());
+                    call.getType(), call.getLength(), call.getAlgorithms(), call.getGenotypes(), call.getStartSplitReadSites(), endSitesList, call.getDiscordantPairs(), null);
         }
         if (progressMeter != null) {
             progressMeter.update(call.getPosition2AsInterval());

@@ -48,13 +48,13 @@ public class BreakpointRefiner {
             return new SVCallRecordWithEvidence(
                     call.getId(), call.getContig(), refinedStartSite.getPosition(), refinedEndSite.getPosition(), call.getStrand1(),
                     call.getStrand2(), call.getType(), call.getLength(), call.getAlgorithms(), call.getGenotypes(),
-                    call.getStartSplitReadSites(), call.getEndSplitReadSites(), call.getDiscordantPairs());
+                    call.getStartSplitReadSites(), call.getEndSplitReadSites(), call.getDiscordantPairs(), null);
         }
         return new SVCallRecordWithEvidence(
                 call.getId(), call.getContig(), refinedStartSite.getPosition(), refinedStartSite.getPosition() + 1, call.getStrand1(),
                 call.getContig2(), refinedEndSite.getPosition(), call.getStrand2(),
                 call.getType(), call.getLength(), call.getAlgorithms(), call.getGenotypes(),
-                call.getStartSplitReadSites(), call.getEndSplitReadSites(), call.getDiscordantPairs());
+                call.getStartSplitReadSites(), call.getEndSplitReadSites(), call.getDiscordantPairs(), null);
     }
 
     private List<SplitReadSite> getValidEndSplitReadSites(final SVCallRecordWithEvidence call, final int endLowerBound) {

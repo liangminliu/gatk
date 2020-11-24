@@ -61,7 +61,7 @@ public abstract class LocatableClusterEngine<T extends Locatable> {
         flushClusters();
         final List<T> output;
         if (clusteringType == CLUSTERING_TYPE.MAX_CLIQUE) {
-            output = deduplicateItems(outputBuffer);
+            output = SVCallRecordUtils.deduplicateLocatables(outputBuffer, dictionary, this::itemsAreIdentical, this::deduplicateIdenticalItems);
         } else {
             output = new ArrayList<>(outputBuffer);
         }
@@ -101,34 +101,6 @@ public abstract class LocatableClusterEngine<T extends Locatable> {
 
     public String getCurrentContig() {
         return currentContig;
-    }
-
-    public List<T> deduplicateItems(final List<T> items) {
-        final List<T> sortedItems = IntervalUtils.sortLocatablesBySequenceDictionary(items, dictionary);
-        final List<T> deduplicatedList = new ArrayList<>();
-        int i = 0;
-        while (i < sortedItems.size()) {
-            final T record = sortedItems.get(i);
-            int j = i + 1;
-            final Collection<Integer> identicalItemIndexes = new ArrayList<>();
-            while (j < sortedItems.size() && record.getStart() == sortedItems.get(j).getStart()) {
-                final T other = sortedItems.get(j);
-                if (itemsAreIdentical(record, other)) {
-                    identicalItemIndexes.add(j);
-                }
-                j++;
-            }
-            if (identicalItemIndexes.isEmpty()) {
-                deduplicatedList.add(record);
-                i++;
-            } else {
-                identicalItemIndexes.add(i);
-                final List<T> identicalItems = identicalItemIndexes.stream().map(sortedItems::get).collect(Collectors.toList());
-                deduplicatedList.add(deduplicateIdenticalItems(identicalItems));
-                i = j;
-            }
-        }
-        return deduplicatedList;
     }
 
     /**

@@ -110,7 +110,7 @@ public final class SVCopyNumberPosteriors extends VariantWalker {
     private int minEventSize = 0;
 
     @Argument(
-            doc = "Prior probability of neutral copy number for " + DepthEvidenceCollector.COPY_NEUTRAL_PRIOR_BASIS_LENGTH +
+            doc = "Prior probability of neutral copy number for " + DepthEvidenceAggregator.COPY_NEUTRAL_PRIOR_BASIS_LENGTH +
                     "bp in regions where copy number calls are not available.",
             fullName = COPY_NEUTRAL_PRIOR_LONG_NAME,
             minValue = 0,
@@ -155,7 +155,7 @@ public final class SVCopyNumberPosteriors extends VariantWalker {
     private VariantContextWriter outputWriter;
     private String currentContig;
     private SVGenotypeEngineDepthOnly depthOnlyGenotypeEngine;
-    private DepthEvidenceCollector depthEvidenceCollector;
+    private DepthEvidenceAggregator depthEvidenceAggregator;
     private SAMSequenceDictionary dictionary;
 
     @Override
@@ -173,7 +173,7 @@ public final class SVCopyNumberPosteriors extends VariantWalker {
                 .map(CalledContigPloidyCollection::new)
                 .collect(Collectors.toList());
         validateSampleSets(contigPloidyCollections);
-        depthEvidenceCollector = new DepthEvidenceCollector(posteriorsReaders, contigPloidyCollections, copyNeutralPrior, samples, dictionary);
+        depthEvidenceAggregator = new DepthEvidenceAggregator(posteriorsReaders, contigPloidyCollections, copyNeutralPrior, samples, dictionary);
         outputWriter = createVCFWriter(outputFile);
         outputWriter.writeHeader(composeHeader());
         currentContig = null;
@@ -195,7 +195,7 @@ public final class SVCopyNumberPosteriors extends VariantWalker {
             return;
         }
 
-        VariantContext finalVariant = depthEvidenceCollector.apply(call, variant);
+        VariantContext finalVariant = depthEvidenceAggregator.apply(call, variant);
         if (SVGenotypeEngine.CNV_TYPES.contains(finalVariant.getStructuralVariantType())
                 && !SVGenotypeEngineFromModel.isDepthOnlyVariant(finalVariant)
                 && !cnvHasDepthSupport(finalVariant, cnvBndMinSampleFraction, cnvBndMaxStatePhred)) {

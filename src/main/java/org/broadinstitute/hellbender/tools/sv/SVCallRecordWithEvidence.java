@@ -2,6 +2,7 @@ package org.broadinstitute.hellbender.tools.sv;
 
 import htsjdk.variant.variantcontext.Genotype;
 import htsjdk.variant.variantcontext.StructuralVariantType;
+import org.broadinstitute.hellbender.tools.copynumber.formats.records.CopyNumberPosteriorDistribution;
 import org.broadinstitute.hellbender.utils.Utils;
 
 import java.util.Collections;
@@ -13,6 +14,7 @@ public class SVCallRecordWithEvidence extends SVCallRecord {
     private final List<SplitReadSite> startSplitReadSites;
     private final List<SplitReadSite> endSplitReadSites;
     private final List<DiscordantPairEvidence> discordantPairs;
+    private final CopyNumberPosteriorDistribution copyNumberDistribution;
 
     public SVCallRecordWithEvidence(final SVCallRecord record) {
         super(record.getId(), record.getContig(), record.getStart(), record.getEnd(), record.getStrand1(), record.getContig2(),
@@ -21,6 +23,7 @@ public class SVCallRecordWithEvidence extends SVCallRecord {
         this.startSplitReadSites = Collections.emptyList();
         this.endSplitReadSites = Collections.emptyList();
         this.discordantPairs = Collections.emptyList();
+        this.copyNumberDistribution = null;
     }
 
     public SVCallRecordWithEvidence(final String id,
@@ -35,9 +38,10 @@ public class SVCallRecordWithEvidence extends SVCallRecord {
                                     final List<Genotype> genotypes,
                                     final List<SplitReadSite> startSplitReadSites,
                                     final List<SplitReadSite> endSplitReadSites,
-                                    final List<DiscordantPairEvidence> discordantPairs) {
+                                    final List<DiscordantPairEvidence> discordantPairs,
+                                    final CopyNumberPosteriorDistribution copyNumberDistribution) {
         this(id, contig, start, end, strand1, contig, end, strand2, type, length, algorithms, genotypes,
-                startSplitReadSites, endSplitReadSites, discordantPairs);
+                startSplitReadSites, endSplitReadSites, discordantPairs, copyNumberDistribution);
     }
 
     public SVCallRecordWithEvidence(final String id,
@@ -54,7 +58,8 @@ public class SVCallRecordWithEvidence extends SVCallRecord {
                                     final List<Genotype> genotypes,
                                     final List<SplitReadSite> startSplitReadSites,
                                     final List<SplitReadSite> endSplitReadSites,
-                                    final List<DiscordantPairEvidence> discordantPairs) {
+                                    final List<DiscordantPairEvidence> discordantPairs,
+                                    final CopyNumberPosteriorDistribution copyNumberDistribution) {
         super(id, startContig, position1, end1, strand1, contig2, position2, strand2, type, length, algorithms, genotypes);
         Utils.nonNull(startSplitReadSites);
         Utils.nonNull(endSplitReadSites);
@@ -65,6 +70,7 @@ public class SVCallRecordWithEvidence extends SVCallRecord {
         this.startSplitReadSites = startSplitReadSites;
         this.endSplitReadSites = endSplitReadSites;
         this.discordantPairs = discordantPairs;
+        this.copyNumberDistribution = copyNumberDistribution;
     }
 
     public List<DiscordantPairEvidence> getDiscordantPairs() {
@@ -78,6 +84,8 @@ public class SVCallRecordWithEvidence extends SVCallRecord {
     public List<SplitReadSite> getEndSplitReadSites() {
         return endSplitReadSites;
     }
+
+    public CopyNumberPosteriorDistribution getCopyNumberDistribution() { return copyNumberDistribution; }
 
     @Override
     public boolean equals(final Object obj) {
@@ -94,16 +102,14 @@ public class SVCallRecordWithEvidence extends SVCallRecord {
         areEqual &= b.getEndSplitReadSites().containsAll(this.getEndSplitReadSites());
         areEqual &= this.getStartSplitReadSites().containsAll(b.getStartSplitReadSites());
         areEqual &= b.getStartSplitReadSites().containsAll(this.getStartSplitReadSites());
+        areEqual &= b.getCopyNumberDistribution() == this.getCopyNumberDistribution()
+                || (this.getCopyNumberDistribution() != null && this.getCopyNumberDistribution().equals(b.getCopyNumberDistribution()));
         return areEqual;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), discordantPairs, endSplitReadSites, startSplitReadSites);
-    }
-
-    String prettyPrint() {
-        return getContig() + ":" + getStart() + "-" + getEnd();
+        return Objects.hash(super.hashCode(), discordantPairs, endSplitReadSites, startSplitReadSites, copyNumberDistribution);
     }
 
 }

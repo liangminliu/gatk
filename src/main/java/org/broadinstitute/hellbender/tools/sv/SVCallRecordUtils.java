@@ -3,6 +3,7 @@ package org.broadinstitute.hellbender.tools.sv;
 import com.google.common.collect.Lists;
 import htsjdk.samtools.SAMSequenceDictionary;
 import htsjdk.samtools.util.IntervalTree;
+import htsjdk.samtools.util.Locatable;
 import htsjdk.variant.variantcontext.*;
 import htsjdk.variant.vcf.VCFConstants;
 import org.broadinstitute.hellbender.tools.spark.sv.utils.GATKSVVCFConstants;
@@ -12,6 +13,8 @@ import org.broadinstitute.hellbender.utils.Utils;
 import org.broadinstitute.hellbender.utils.codecs.SVCallRecordCodec;
 
 import java.util.*;
+import java.util.function.BiPredicate;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -173,18 +176,47 @@ public final class SVCallRecordUtils {
         return Math.max(0, Math.min(end1, end2) - Math.max(start1, start2) + 1);
     }
 
-    public static Stream<SVCallRecordWithEvidence> convertInversionsToBreakends(final SVCallRecordWithEvidence call) {
+    public static Stream<SVCallRecord> convertInversionsToBreakends(final SVCallRecord call) {
         if (!call.getType().equals(StructuralVariantType.INV)) {
             return Stream.of(call);
         }
-        final SVCallRecordWithEvidence positiveBreakend = new SVCallRecordWithEvidence(call.getId(), call.getContig(),
+        final SVCallRecord positiveBreakend = new SVCallRecord(call.getId(), call.getContig(),
                 call.getStart(), call.getEnd(), true, true, StructuralVariantType.BND, -1,
-                call.getAlgorithms(), call.getGenotypes(), call.getStartSplitReadSites(), call.getEndSplitReadSites(),
-                call.getDiscordantPairs());
-        final SVCallRecordWithEvidence negativeBreakend = new SVCallRecordWithEvidence(call.getId(), call.getContig(),
+                call.getAlgorithms(), call.getGenotypes());
+        final SVCallRecord negativeBreakend = new SVCallRecord(call.getId(), call.getContig(),
                 call.getStart(), call.getEnd(), false, false, StructuralVariantType.BND, -1,
-                call.getAlgorithms(), call.getGenotypes(), call.getStartSplitReadSites(), call.getEndSplitReadSites(),
-                call.getDiscordantPairs());
+                call.getAlgorithms(), call.getGenotypes());
         return Stream.of(positiveBreakend, negativeBreakend);
+    }
+
+    public static <T extends Locatable> List<T> deduplicateLocatables(final List<T> items,
+                                                                      final SAMSequenceDictionary dictionary,
+                                                                      final BiPredicate<T,T> itemsAreIdenticalFunction,
+                                                                      final Function<Collection<T>,T> deduplicateIdenticalItemsFunction) {
+        final List<T> sortedItems = IntervalUtils.sortLocatablesBySequenceDictionary(items, dictionary);
+        final List<T> deduplicatedList = new ArrayList<>();
+        int i = 0;
+        while (i < sortedItems.size()) {
+            final T record = sortedItems.get(i);
+            int j = i + 1;
+            final Collection<Integer> identicalItemIndexes = new ArrayList<>();
+            while (j < sortedItems.size() && record.getStart() == sortedItems.get(j).getStart()) {
+                final T other = sortedItems.get(j);
+                if (itemsAreIdenticalFunction.test(record, other)) {
+                    identicalItemIndexes.add(j);
+                }
+                j++;
+            }
+            if (identicalItemIndexes.isEmpty()) {
+                deduplicatedList.add(record);
+                i++;
+            } else {
+                identicalItemIndexes.add(i);
+                final List<T> identicalItems = identicalItemIndexes.stream().map(sortedItems::get).collect(Collectors.toList());
+                deduplicatedList.add(deduplicateIdenticalItemsFunction.apply(identicalItems));
+                i = j;
+            }
+        }
+        return deduplicatedList;
     }
 }

@@ -15,7 +15,7 @@ public class SVClusterEngineNoCNV extends SVClusterEngine {
     }
 
     @Override
-    protected boolean clusterTogether(final SVCallRecordWithEvidence a, final SVCallRecordWithEvidence b) {
+    protected boolean clusterTogether(final SVCallRecord a, final SVCallRecord b) {
         if (!a.getType().equals(b.getType())) {
             return false;
         }
@@ -33,7 +33,7 @@ public class SVClusterEngineNoCNV extends SVClusterEngine {
 
     // TODO optimize intervals
     @Override
-    protected SimpleInterval getClusteringInterval(final SVCallRecordWithEvidence call, final SimpleInterval clusterMinStartInterval) {
+    protected SimpleInterval getClusteringInterval(final SVCallRecord call, final SimpleInterval clusterMinStartInterval) {
         final int padding = (int) Math.ceil(Math.max(Math.max(getEndpointClusteringPadding(call), call.getLength() * MIN_RECIPROCAL_OVERLAP_DEPTH), MIXED_CLUSTERING_WINDOW));
         final int minStart = call.getStart() - padding;
         final int maxStart = call.getStart() + padding;

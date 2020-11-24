@@ -1,6 +1,5 @@
 package org.broadinstitute.hellbender.tools.walkers.sv;
 
-import com.google.common.collect.Lists;
 import htsjdk.samtools.SAMSequenceDictionary;
 import htsjdk.samtools.reference.ReferenceSequenceFile;
 import htsjdk.variant.variantcontext.*;
@@ -10,7 +9,6 @@ import htsjdk.variant.vcf.VCFHeader;
 import htsjdk.variant.vcf.VCFHeaderLine;
 import htsjdk.variant.vcf.VCFStandardHeaderLines;
 import org.apache.commons.lang3.tuple.MutablePair;
-import org.apache.commons.lang3.tuple.Pair;
 import org.broadinstitute.barclay.argparser.Argument;
 import org.broadinstitute.barclay.argparser.BetaFeature;
 import org.broadinstitute.barclay.argparser.CommandLineProgramProperties;
@@ -19,15 +17,13 @@ import org.broadinstitute.hellbender.cmdline.programgroups.StructuralVariantDisc
 import org.broadinstitute.hellbender.engine.MultiVariantWalkerGroupedOnStart;
 import org.broadinstitute.hellbender.engine.ReadsContext;
 import org.broadinstitute.hellbender.engine.ReferenceContext;
-import org.broadinstitute.hellbender.exceptions.UserException;
 import org.broadinstitute.hellbender.tools.copynumber.PostprocessGermlineCNVCalls;
 import org.broadinstitute.hellbender.tools.copynumber.gcnv.GermlineCNVSegmentVariantComposer;
-import org.broadinstitute.hellbender.tools.copynumber.gcnv.GermlineCNVVariantComposer;
 import org.broadinstitute.hellbender.tools.spark.sv.utils.GATKSVVCFConstants;
 import org.broadinstitute.hellbender.tools.spark.sv.utils.GATKSVVCFHeaderLines;
 import org.broadinstitute.hellbender.tools.sv.SVCallRecord;
-import org.broadinstitute.hellbender.tools.sv.SVClusterEngine;
 import org.broadinstitute.hellbender.tools.sv.SVCallRecordWithEvidence;
+import org.broadinstitute.hellbender.tools.sv.SVClusterEngine;
 import org.broadinstitute.hellbender.tools.sv.SVDepthOnlyCallDefragmenter;
 import org.broadinstitute.hellbender.utils.*;
 import org.broadinstitute.hellbender.utils.genotyper.IndexedSampleList;
@@ -37,11 +33,10 @@ import org.broadinstitute.hellbender.utils.samples.PedigreeValidationType;
 import org.broadinstitute.hellbender.utils.samples.SampleDB;
 import org.broadinstitute.hellbender.utils.samples.SampleDBBuilder;
 import org.broadinstitute.hellbender.utils.samples.Sex;
-import org.broadinstitute.hellbender.utils.variant.*;
-import shaded.cloud_nio.com.google.errorprone.annotations.Var;
+import org.broadinstitute.hellbender.utils.variant.GATKSVVariantContextUtils;
+import org.broadinstitute.hellbender.utils.variant.GATKVariantContextUtils;
 
 import java.io.File;
-import java.lang.reflect.Array;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -230,15 +225,15 @@ public class JointCNVSegmentation extends MultiVariantWalkerGroupedOnStart {
 
     private void processClusters() {
         if (!defragmenter.isEmpty()) {
-            final List<SVCallRecordWithEvidence> defragmentedCalls = defragmenter.getOutput();
+            final List<SVCallRecord> defragmentedCalls = defragmenter.getOutput();
             defragmentedCalls.stream().forEachOrdered(clusterEngine::add);
         }
         //Jack and Isaac cluster first and then defragment
-        final List<SVCallRecordWithEvidence> clusteredCalls = clusterEngine.getOutput();
+        final List<SVCallRecord> clusteredCalls = clusterEngine.getOutput();
         write(clusteredCalls);
     }
 
-    private void write(final List<SVCallRecordWithEvidence> calls) {
+    private void write(final List<SVCallRecord> calls) {
         final ReferenceSequenceFile reference = ReferenceUtils.createReferenceReader(referenceArguments.getReferenceSpecifier());
         final List<VariantContext> sortedCalls = calls.stream()
                 .sorted(Comparator.comparing(c -> new SimpleInterval(c.getContig(), c.getStart(), c.getEnd()), //VCs have to be sorted by end as well
@@ -441,7 +436,7 @@ public class JointCNVSegmentation extends MultiVariantWalkerGroupedOnStart {
         return samplePloidy;
     }
 
-    public VariantContext buildVariantContext(final SVCallRecordWithEvidence call, final ReferenceSequenceFile reference) {
+    public VariantContext buildVariantContext(final SVCallRecord call, final ReferenceSequenceFile reference) {
         Utils.nonNull(call);
         Utils.nonNull(reference);
         final List<Allele> outputAlleles = new ArrayList<>();

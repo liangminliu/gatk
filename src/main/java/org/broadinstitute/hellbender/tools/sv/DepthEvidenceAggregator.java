@@ -24,7 +24,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.DoubleStream;
 
-public class DepthEvidenceCollector {
+public class DepthEvidenceAggregator {
 
     private final List<VCFFileReader> posteriorsReaders;
     private final SAMSequenceDictionary dictionary;
@@ -40,11 +40,11 @@ public class DepthEvidenceCollector {
 
     public static final int COPY_NEUTRAL_PRIOR_BASIS_LENGTH = 1000;
 
-    public DepthEvidenceCollector(final List<VCFFileReader> posteriorsReaders,
-                                  final Collection<CalledContigPloidyCollection> contigPloidyCollections,
-                                  final double copyNeutralPrior,
-                                  final List<String> samples,
-                                  final SAMSequenceDictionary dictionary) {
+    public DepthEvidenceAggregator(final List<VCFFileReader> posteriorsReaders,
+                                   final Collection<CalledContigPloidyCollection> contigPloidyCollections,
+                                   final double copyNeutralPrior,
+                                   final List<String> samples,
+                                   final SAMSequenceDictionary dictionary) {
         Utils.nonNull(posteriorsReaders);
         Utils.nonNull(contigPloidyCollections);
         Utils.nonNull(samples);
@@ -93,7 +93,7 @@ public class DepthEvidenceCollector {
     }
 
     public VariantContext createBaseVariant(final VariantContext variant,
-                                             final Map<String, CopyNumberPosteriorDistribution> variantPosteriors) {
+                                            final Map<String, CopyNumberPosteriorDistribution> variantPosteriors) {
         Utils.nonNull(variant);
         Utils.nonNull(variantPosteriors);
         final VariantContextBuilder variantBuilder = new VariantContextBuilder(variant);

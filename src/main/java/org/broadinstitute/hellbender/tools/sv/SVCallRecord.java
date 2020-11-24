@@ -272,6 +272,10 @@ public class SVCallRecord implements Feature {
         return new SimpleInterval(contig2, end1, end1);
     }
 
+    String prettyPrint() {
+        return getContig() + ":" + getStart() + "-" + getEnd();
+    }
+
     @Override
     public boolean equals(final Object obj) {
         if (obj == null) {

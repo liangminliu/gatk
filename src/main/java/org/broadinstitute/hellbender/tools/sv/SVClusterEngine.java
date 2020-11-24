@@ -13,7 +13,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvidence> {
+public class SVClusterEngine extends LocatableClusterEngine<SVCallRecord> {
 
     protected static final double MIN_RECIPROCAL_OVERLAP_DEPTH = 0.8;
     protected final double BREAKEND_CLUSTERING_WINDOW_FRACTION = 0.5;
@@ -62,19 +62,19 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
      */
 
     @Override
-    protected SVCallRecordWithEvidence flattenCluster(final Collection<SVCallRecordWithEvidence> cluster) {
-        final Collection<SVCallRecordWithEvidence> mostPreciseCalls;
+    protected SVCallRecord flattenCluster(final Collection<SVCallRecord> cluster) {
+        final Collection<SVCallRecord> mostPreciseCalls;
         if (cluster.stream().allMatch(SVClusterEngine::isDepthOnlyCall)) {
             mostPreciseCalls = cluster;
         } else {
             mostPreciseCalls = cluster.stream().filter(call -> !SVDepthOnlyCallDefragmenter.isDepthOnlyCall(call)).collect(Collectors.toList());
         }
-        final List<Integer> startPositions = mostPreciseCalls.stream().map(SVCallRecordWithEvidence::getStart).sorted().collect(Collectors.toList());
-        final List<Integer> endPositions = mostPreciseCalls.stream().map(SVCallRecordWithEvidence::getEnd).sorted().collect(Collectors.toList());
+        final List<Integer> startPositions = mostPreciseCalls.stream().map(SVCallRecord::getStart).sorted().collect(Collectors.toList());
+        final List<Integer> endPositions = mostPreciseCalls.stream().map(SVCallRecord::getEnd).sorted().collect(Collectors.toList());
         //use the mid value of the sorted list so the start and end represent real breakpoint observations
         final int medianStart = startPositions.get(startPositions.size() / 2);
         final int medianEnd = endPositions.get(endPositions.size() / 2);
-        final SVCallRecordWithEvidence exampleCall = mostPreciseCalls.iterator().next();
+        final SVCallRecord exampleCall = mostPreciseCalls.iterator().next();
         final int length = exampleCall.getContig().equals(exampleCall.getContig2()) && !exampleCall.getType().equals(StructuralVariantType.INS) ? medianEnd - medianStart + 1 : exampleCall.getLength();
         final List<String> algorithms = cluster.stream().flatMap(v -> v.getAlgorithms().stream()).distinct().collect(Collectors.toList());
         final List<Genotype> clusterSamples = cluster.stream().flatMap(v -> v.getGenotypes().stream()).collect(Collectors.toList());
@@ -115,13 +115,12 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
         }
 
         //TODO: merge evidence for WGS data
-        return new SVCallRecordWithEvidence(exampleCall.getId(), exampleCall.getContig(), newStart, newEnd, exampleCall.getStrand1(),
-                exampleCall.getStrand2(), clusterType, length, algorithms, clusterSamples,
-                exampleCall.getStartSplitReadSites(), exampleCall.getEndSplitReadSites(), exampleCall.getDiscordantPairs());
+        return new SVCallRecord(exampleCall.getId(), exampleCall.getContig(), newStart, newEnd, exampleCall.getStrand1(),
+                exampleCall.getStrand2(), clusterType, length, algorithms, clusterSamples);
     }
 
     @Override
-    protected boolean clusterTogether(final SVCallRecordWithEvidence a, final SVCallRecordWithEvidence b) {
+    protected boolean clusterTogether(final SVCallRecord a, final SVCallRecord b) {
         //if (!a.getType().equals(b.getType())) return false;  //TODO: do we need to keep dels and dupes separate?
         final boolean depthOnlyA = isDepthOnlyCall(a);
         final boolean depthOnlyB = isDepthOnlyCall(b);
@@ -142,7 +141,7 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
      * @return  an interval describing the cluster after {@param call} is added
      */
     @Override
-    protected SimpleInterval getClusteringInterval(final SVCallRecordWithEvidence call, final SimpleInterval clusterMinStartInterval) {
+    protected SimpleInterval getClusteringInterval(final SVCallRecord call, final SimpleInterval clusterMinStartInterval) {
         final int minStart;
         final int maxStart;
         if (isDepthOnlyCall(call)) {
@@ -163,7 +162,7 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
     }
 
     @Override
-    protected boolean itemsAreIdentical(final SVCallRecordWithEvidence a, final SVCallRecordWithEvidence b) {
+    public boolean itemsAreIdentical(final SVCallRecord a, final SVCallRecord b) {
         return a.getContig().equals(b.getContig())
                 && a.getStart() == b.getStart()
                 && a.getContig2().equals(b.getContig2())
@@ -179,21 +178,21 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
      * @return  a single representative call
      */
     @Override
-    protected SVCallRecordWithEvidence deduplicateIdenticalItems(final Collection<SVCallRecordWithEvidence> items) {
+    public SVCallRecord deduplicateIdenticalItems(final Collection<SVCallRecord> items) {
         if (items.isEmpty()) {
             return null;
         }
         final List<Genotype> genotypes = items.stream()
-                .map(SVCallRecordWithEvidence::getGenotypes)
+                .map(SVCallRecord::getGenotypes)
                 .flatMap(Collection::stream)
                 .collect(Collectors.toList());
         final List<String> algorithms = items.stream()
-                .map(SVCallRecordWithEvidence::getAlgorithms)
+                .map(SVCallRecord::getAlgorithms)
                 .flatMap(Collection::stream)
                 .distinct()
                 .collect(Collectors.toList());
-        final SVCallRecordWithEvidence example = items.iterator().next();
-        return new SVCallRecordWithEvidence(
+        final SVCallRecord example = items.iterator().next();
+        return new SVCallRecord(
                 example.getId(),
                 example.getContig(),
                 example.getStart(),
@@ -203,13 +202,10 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
                 example.getType(),
                 example.getLength(),
                 algorithms,
-                genotypes,
-                example.getStartSplitReadSites(),
-                example.getEndSplitReadSites(),
-                example.getDiscordantPairs());
+                genotypes);
     }
 
-    protected boolean clusterTogetherBothDepthOnly(final SVCallRecordWithEvidence a, final SVCallRecordWithEvidence b) {
+    protected boolean clusterTogetherBothDepthOnly(final SVCallRecord a, final SVCallRecord b) {
         if (!a.getContig().equals(a.getContig2()) || !b.getContig().equals(b.getContig2())) {
             throw new IllegalArgumentException("Attempted to cluster depth-only calls with endpoints on different contigs");
         }
@@ -218,7 +214,7 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
         return IntervalUtils.isReciprocalOverlap(intervalA, intervalB, MIN_RECIPROCAL_OVERLAP_DEPTH);
     }
 
-    protected boolean clusterTogetherBothWithEvidence(final SVCallRecordWithEvidence a, final SVCallRecordWithEvidence b) {
+    protected boolean clusterTogetherBothWithEvidence(final SVCallRecord a, final SVCallRecord b) {
         // Reject if one is intrachromosomal and the other isn't
         final boolean intrachromosomalA = a.getContig().equals(a.getContig2());
         final boolean intrachromosomalB = b.getContig().equals(b.getContig2());
@@ -232,7 +228,7 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
         return intervalAStart.overlaps(intervalBStart) && intervalAEnd.overlaps(intervalBEnd);
     }
 
-    protected boolean clusterTogetherMixedEvidence(final SVCallRecordWithEvidence a, final SVCallRecordWithEvidence b) {
+    protected boolean clusterTogetherMixedEvidence(final SVCallRecord a, final SVCallRecord b) {
         final boolean intrachromosomalA = a.getContig().equals(a.getContig2());
         final boolean intrachromosomalB = b.getContig().equals(b.getContig2());
         if (!(intrachromosomalA && intrachromosomalB)) return false;
@@ -241,7 +237,7 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
                 && Math.abs(a.getEnd() - b.getEnd()) < MIXED_CLUSTERING_WINDOW;
     }
 
-    private SimpleInterval getStartClusteringInterval(final SVCallRecordWithEvidence call) {
+    private SimpleInterval getStartClusteringInterval(final SVCallRecord call) {
         if (this.genomicToBinMap == null) {
             final int padding = getEndpointClusteringPadding(call);
             return call.getPosition1AsInterval().expandWithinContig(padding, dictionary);
@@ -250,7 +246,7 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
         }
     }
 
-    protected SimpleInterval getEndClusteringInterval(final SVCallRecordWithEvidence call) {
+    protected SimpleInterval getEndClusteringInterval(final SVCallRecord call) {
         if (this.genomicToBinMap == null) {
             final int padding = getEndpointClusteringPadding(call);
             return call.getPosition2AsInterval().expandWithinContig(padding, dictionary);
@@ -259,11 +255,11 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecordWithEvid
         }
     }
 
-    protected int getEndpointClusteringPadding(final SVCallRecordWithEvidence call) {
+    protected int getEndpointClusteringPadding(final SVCallRecord call) {
         return (int) Math.min(MAX_BREAKEND_CLUSTERING_WINDOW, Math.max(MIN_BREAKEND_CLUSTERING_WINDOW, BREAKEND_CLUSTERING_WINDOW_FRACTION * call.getLength()));
     }
 
-    public static boolean isDepthOnlyCall(final SVCallRecordWithEvidence call) {
+    public static boolean isDepthOnlyCall(final SVCallRecord call) {
         return call.getAlgorithms().size() == 1 && call.getAlgorithms().get(0).equals(GATKSVVCFConstants.DEPTH_ALGORITHM);
     }
 

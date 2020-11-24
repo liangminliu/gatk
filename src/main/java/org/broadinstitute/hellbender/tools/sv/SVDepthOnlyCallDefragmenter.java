@@ -12,7 +12,7 @@ import org.broadinstitute.hellbender.utils.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class SVDepthOnlyCallDefragmenter extends LocatableClusterEngine<SVCallRecordWithEvidence> {
+public class SVDepthOnlyCallDefragmenter extends LocatableClusterEngine<SVCallRecord> {
 
     private final double minSampleOverlap;
     private static final double PADDING_FRACTION = 0.5;
@@ -35,16 +35,15 @@ public class SVDepthOnlyCallDefragmenter extends LocatableClusterEngine<SVCallRe
      * @return  a call encompassing all the cluster's events and containing all the algorithms and genotypes
      */
     @Override
-    protected SVCallRecordWithEvidence flattenCluster(final Collection<SVCallRecordWithEvidence> cluster) {
-        final int newStart =  cluster.stream().mapToInt(SVCallRecordWithEvidence::getStart).min().getAsInt();
-        final int newEnd = cluster.stream().mapToInt(SVCallRecordWithEvidence::getEnd).max().getAsInt();
-        final SVCallRecordWithEvidence exampleCall = cluster.iterator().next();
+    protected SVCallRecord flattenCluster(final Collection<SVCallRecord> cluster) {
+        final int newStart =  cluster.stream().mapToInt(SVCallRecord::getStart).min().getAsInt();
+        final int newEnd = cluster.stream().mapToInt(SVCallRecord::getEnd).max().getAsInt();
+        final SVCallRecord exampleCall = cluster.iterator().next();
         final int length = newEnd - newStart + 1;  //+1 because GATK intervals are inclusive
         final List<String> algorithms = cluster.stream().flatMap(v -> v.getAlgorithms().stream()).distinct().collect(Collectors.toList()); //should be depth only
         final List<Genotype> clusterGenotypes = deduplicateGenotypes(cluster.stream().flatMap(v -> v.getGenotypes().stream()).collect(Collectors.toList()));
-        return new SVCallRecordWithEvidence(exampleCall.getId(), exampleCall.getContig(), newStart, newEnd, exampleCall.getStrand1(),
-                exampleCall.getStrand2(), exampleCall.getType(), length, algorithms, clusterGenotypes,
-                exampleCall.getStartSplitReadSites(), exampleCall.getEndSplitReadSites(), exampleCall.getDiscordantPairs());
+        return new SVCallRecord(exampleCall.getId(), exampleCall.getContig(), newStart, newEnd, exampleCall.getStrand1(),
+                exampleCall.getStrand2(), exampleCall.getType(), length, algorithms, clusterGenotypes);
     }
 
     protected List<Genotype> deduplicateGenotypes(final List<Genotype> clusterGenotypes) {
@@ -112,7 +111,7 @@ public class SVDepthOnlyCallDefragmenter extends LocatableClusterEngine<SVCallRe
      * @return true if the two calls should be in the same cluster
      */
     @Override
-    protected boolean clusterTogether(final SVCallRecordWithEvidence a, final SVCallRecordWithEvidence b) {
+    protected boolean clusterTogether(final SVCallRecord a, final SVCallRecord b) {
         if (!isDepthOnlyCall(a) || !isDepthOnlyCall(b)) return false;
         Utils.validate(a.getContig().equals(a.getContig2()), "Call A is depth-only but interchromosomal");
         Utils.validate(b.getContig().equals(b.getContig2()), "Call B is depth-only but interchromosomal");
@@ -142,7 +141,7 @@ public class SVDepthOnlyCallDefragmenter extends LocatableClusterEngine<SVCallRe
      * @return  an interval describing the cluster after {@param call} is added
      */
     @Override
-    protected SimpleInterval getClusteringInterval(final SVCallRecordWithEvidence call, final SimpleInterval currentClusterInterval) {
+    protected SimpleInterval getClusteringInterval(final SVCallRecord call, final SimpleInterval currentClusterInterval) {
         Utils.nonNull(call);
         final SimpleInterval callInterval = getCallInterval(call);
         final int paddedCallStart, paddedCallEnd;
@@ -194,17 +193,17 @@ public class SVDepthOnlyCallDefragmenter extends LocatableClusterEngine<SVCallRe
 
     // Not used for single-linkage clustering
     @Override
-    protected boolean itemsAreIdentical(final SVCallRecordWithEvidence a, final SVCallRecordWithEvidence b) {
+    protected boolean itemsAreIdentical(final SVCallRecord a, final SVCallRecord b) {
         throw new GATKException.ShouldNeverReachHereException("Deduplication should not be called for single-linkage clustering in depth-only defragmentation.");
     }
 
     // Not used for single-linkage clustering
     @Override
-    protected SVCallRecordWithEvidence deduplicateIdenticalItems(final Collection<SVCallRecordWithEvidence> items) {
+    protected SVCallRecord deduplicateIdenticalItems(final Collection<SVCallRecord> items) {
         return null;
     }
 
-    private SimpleInterval getCallInterval(final SVCallRecordWithEvidence call) {
+    private SimpleInterval getCallInterval(final SVCallRecord call) {
         return new SimpleInterval(call.getContig(), call.getStart(), call.getEnd());
     }
 
