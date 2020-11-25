@@ -13,10 +13,11 @@ final class SplitReadSite {
 
     /**
      * @param position breakpoint position indicated by the split reads
-     * @param sampleCountsMap map with (sample id, split read count) entries
+     * @param sampleCountsMap map with (sample id, split read count > 0) entries
      */
     public SplitReadSite(final int position, final Map<String,Integer> sampleCountsMap) {
         Utils.nonNull(sampleCountsMap);
+        Utils.validateArg(sampleCountsMap.values().stream().allMatch(c -> c > 0), "Non-positive counts not allowed");
         this.position = position;
         this.sampleCountsMap = sampleCountsMap;
     }
@@ -31,7 +32,9 @@ final class SplitReadSite {
     }
 
     public int getCount(final String sample) {
-        Utils.validateArg(hasSample(sample), "No counts found for sample " + sample);
-        return sampleCountsMap.get(sample);
+        if (hasSample(sample)) {
+            return sampleCountsMap.get(sample);
+        }
+        return 0;
     }
 }

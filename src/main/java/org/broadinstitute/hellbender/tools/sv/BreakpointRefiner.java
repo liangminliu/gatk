@@ -1,29 +1,59 @@
 package org.broadinstitute.hellbender.tools.sv;
 
+import htsjdk.samtools.SAMSequenceDictionary;
+import htsjdk.samtools.util.Tuple;
 import htsjdk.variant.variantcontext.StructuralVariantType;
 import org.apache.commons.math3.special.Gamma;
 import org.broadinstitute.hellbender.utils.Utils;
-import scala.Tuple2;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Refines variant breakpoints using split read evidence
+ * Refines variant breakpoints using split read evidence.
+ *
+ * The start and end of the breakpoint are tested independently. At each end we perform a series of Poisson
+ * tests using the following model:
+ *
+ *  Given:
+ *      d_i : depth of sample i
+ *      c_i : split read count of sample i
+ *
+ *   Define a Poisson model of split read counts:
+ *      r_i = c_i / d_i : normalized split read count of sample i
+ *      m_c : median carrier r_i
+ *      m_b : median background (non-carrier) r_i
+ *      mu : mean depth of all samples
+ *
+ *      lambda = mu * m_c : expected carrier count
+ *      X ~ Poisson(lambda) : carrier count model
+ *      x_b = round(mu * m_b) : adjusted median background count
+ *
+ *   Calculate probability of observing the background count:
+ *      p = P(X < x_b)
+ *
+ *   We then select the site with the lowest score. Sites are restricted by upper and lower bounds for the start
+ *   and end of the breakpoint, respectively (see {@link BreakpointRefiner#getStartAndEndBounds(SVCallRecord)}.
  */
 public class BreakpointRefiner {
 
     private final Map<String,Double> sampleCoverageMap;
+    private final SAMSequenceDictionary dictionary;
     /**
-     * Number bases that insertion split read positions can pass each other by, i.e. when left-clipped reads are to
-     * the left of the breakpoint and right-clipped reads to the right.
+     * Number bases that insertion split read positions can pass by the original breakpoint, when left-clipped
+     * reads are to the left of the breakpoint and right-clipped reads to the right.
      */
     private int maxInsertionSplitReadCrossDistance;
 
     public static final int DEFAULT_MAX_INSERTION_CROSS_DISTANCE = 20;
 
-    public BreakpointRefiner(final Map<String,Double> sampleCoverageMap) {
-        this.sampleCoverageMap = sampleCoverageMap;
+    /**
+     * @param sampleCoverageMap map with (sample id, per-base sample coverage) entries
+     * @param dictionary reference dictionary
+     */
+    public BreakpointRefiner(final Map<String,Double> sampleCoverageMap, final SAMSequenceDictionary dictionary) {
+        this.sampleCoverageMap = Utils.nonNull(sampleCoverageMap);
+        this.dictionary = Utils.nonNull(dictionary);
         setMaxInsertionSplitReadCrossDistance(DEFAULT_MAX_INSERTION_CROSS_DISTANCE);
     }
 
@@ -31,78 +61,148 @@ public class BreakpointRefiner {
         maxInsertionSplitReadCrossDistance = distance;
     }
 
+    /**
+     * Performs breakend refinement for a call
+     *
+     * @param call with split read evidence
+     * @return record with new breakpoints
+     */
     public SVCallRecordWithEvidence refineCall(final SVCallRecordWithEvidence call) {
         Utils.nonNull(call);
-        Utils.nonNull(call.getStartSplitReadSites());
+        SVCallRecordUtils.validateCoordinatesWithDictionary(call, dictionary);
+
+        // Depth-only calls cannot be refined
         if (SVClusterEngine.isDepthOnlyCall(call)) {
             return call;
         }
-        final Set<String> backgroundSamples = getBackgroundSamples(call);
-        final SplitReadSite refinedStartSite = getRefinedSite(call.getStartSplitReadSites(), call.getCalledSamples(), backgroundSamples, call.getStart());
-        final int endLowerBound = getEndLowerBound(call.getType(), call.getContig(), refinedStartSite.getPosition(), call.getContig2());
-        final int defaultEndPosition = Math.max(endLowerBound, call.getEnd());
-        final List<SplitReadSite> validSites = getValidEndSplitReadSites(call, endLowerBound);
-        final SplitReadSite refinedEndSite = getRefinedSite(validSites, call.getCalledSamples(), backgroundSamples, defaultEndPosition);
 
-        if (call.getContig().equals(call.getContig2())) {
+        // Non-carrier samples
+        final Set<String> backgroundSamples = getBackgroundSamples(call);
+
+        // Limits on start / end positions
+        final int[] bounds = getStartAndEndBounds(call);
+        final int startUpperBound = bounds[0];
+        final int endLowerBound = bounds[1];
+
+        // Refine start
+        final int defaultStartPosition = Math.min(startUpperBound, call.getPositionA());
+        final List<SplitReadSite> validStartSites = getValidStartSplitReadSites(call, startUpperBound);
+        final SplitReadSite refinedStartSite = getRefinedSite(validStartSites, call.getCalledSamples(), backgroundSamples, defaultStartPosition);
+
+        // Refine end
+        final int defaultEndPosition = Math.max(endLowerBound, call.getPositionB());
+        final List<SplitReadSite> validEndSites = getValidEndSplitReadSites(call, endLowerBound);
+        final SplitReadSite refinedEndSite = getRefinedSite(validEndSites, call.getCalledSamples(), backgroundSamples, defaultEndPosition);
+
+        // Create new record
+        if (call.getContigA().equals(call.getContigB())) {
             return new SVCallRecordWithEvidence(
-                    call.getId(), call.getContig(), refinedStartSite.getPosition(), refinedEndSite.getPosition(), call.getStrand1(),
-                    call.getStrand2(), call.getType(), call.getLength(), call.getAlgorithms(), call.getGenotypes(),
-                    call.getStartSplitReadSites(), call.getEndSplitReadSites(), call.getDiscordantPairs(), null);
+                    call.getId(), call.getContigA(), refinedStartSite.getPosition(), refinedEndSite.getPosition(), call.getStrandA(),
+                    call.getStrandB(), call.getType(), call.getLength(), call.getAlgorithms(), call.getGenotypes(),
+                    call.getStartSplitReadSites(), call.getEndSplitReadSites(), call.getDiscordantPairs(), call.getCopyNumberDistribution());
         }
         return new SVCallRecordWithEvidence(
-                call.getId(), call.getContig(), refinedStartSite.getPosition(), refinedStartSite.getPosition() + 1, call.getStrand1(),
-                call.getContig2(), refinedEndSite.getPosition(), call.getStrand2(),
-                call.getType(), call.getLength(), call.getAlgorithms(), call.getGenotypes(),
-                call.getStartSplitReadSites(), call.getEndSplitReadSites(), call.getDiscordantPairs(), null);
+                call.getId(), call.getContigA(), refinedStartSite.getPosition(), call.getStrandA(), call.getContigB(),
+                refinedEndSite.getPosition(), call.getStrandB(), call.getType(), call.getLength(), call.getAlgorithms(),
+                call.getGenotypes(), call.getStartSplitReadSites(), call.getEndSplitReadSites(), call.getDiscordantPairs(),
+                call.getCopyNumberDistribution());
     }
 
-    private List<SplitReadSite> getValidEndSplitReadSites(final SVCallRecordWithEvidence call, final int endLowerBound) {
-        return call.getEndSplitReadSites().stream()
-                .filter(s -> s.getPosition() >= endLowerBound)
-                .collect(Collectors.toList());
+    /**
+     * Filters start sites with position greater than upper-bound
+     *
+     * @param call
+     * @param upperBound max position
+     * @return filtered set of start sites
+     */
+    private List<SplitReadSite> getValidStartSplitReadSites(final SVCallRecordWithEvidence call, final int upperBound) {
+        return call.getStartSplitReadSites().stream().filter(s -> s.getPosition() <= upperBound).collect(Collectors.toList());
     }
 
+    /**
+     * Filters end sites with position less than lower-bound
+     *
+     * @param call
+     * @param lowerBound min position
+     * @return filtered set of end sites
+     */
+    private List<SplitReadSite> getValidEndSplitReadSites(final SVCallRecordWithEvidence call, final int lowerBound) {
+        return call.getEndSplitReadSites().stream().filter(s -> s.getPosition() >= lowerBound).collect(Collectors.toList());
+    }
+
+    /**
+     * Gets non-carrier samples
+     *
+     * @param call
+     * @return sample ids
+     */
     private Set<String> getBackgroundSamples(final SVCallRecord call) {
-        return sampleCoverageMap.keySet().stream().filter(s -> !call.getCalledSamples().contains(s)).collect(Collectors.toSet());
+        return sampleCoverageMap.keySet().stream().filter(s -> !call.getCarrierSamples().contains(s)).collect(Collectors.toSet());
     }
 
-    private int getEndLowerBound(final StructuralVariantType type, final String startContig, final int startPosition, final String endContig) {
-        if (!startContig.equals(endContig)) return 0;
-        return type.equals(StructuralVariantType.INS) ?
-                startPosition - maxInsertionSplitReadCrossDistance :
-                startPosition + 1;
+    /**
+     * Determines upper-bound on start site position and lower-bound on end site position (both inclusive).
+     * For inter-chromosomal variants, boundaries are at the ends of the chromsomes (any position is valid).
+     * For insertions, {@link BreakpointRefiner#maxInsertionSplitReadCrossDistance} is used to determine how far
+     * past the original breakpoint each side can be. Otherwise, we use the midpoint of the original coordinates.
+     *
+     * @param call
+     * @return 2-element array where arr[0] and arr[1] as the start and end site boundaries, respectively
+     */
+    private int[] getStartAndEndBounds(final SVCallRecord call) {
+        if (!SVCallRecordUtils.isIntrachromosomal(call)) {
+            return new int[] {dictionary.getSequence(call.getContigA()).getSequenceLength(), 1};
+        }
+        if (call.getType().equals(StructuralVariantType.INS)) {
+            return new int[] {call.getPositionB() + maxInsertionSplitReadCrossDistance,
+                    call.getPositionA() - maxInsertionSplitReadCrossDistance};
+        }
+        final int midPoint = (call.getPositionA() + call.getPositionB()) / 2;
+        return new int[] {midPoint, midPoint};
     }
 
+    /**
+     * Performs refinement on one side of a breakpoint
+     *
+     * @param sites sites to test
+     * @param carrierSamples carrier sample ids
+     * @param backgroundSamples background sample ids
+     * @param defaultPosition position to use if test cannot be performed (no sites or no carriers)
+     * @return site with refined breakpoints
+     */
     private SplitReadSite getRefinedSite(final List<SplitReadSite> sites,
                                          final Set<String> carrierSamples,
                                          final Set<String> backgroundSamples,
                                          final int defaultPosition) {
-        if (!sampleCoverageMap.keySet().containsAll(carrierSamples)) {
-            throw new IllegalArgumentException("One or more carrier samples not found in sample coverage map");
-        }
-        if (!sampleCoverageMap.keySet().containsAll(backgroundSamples)) {
-            throw new IllegalArgumentException("One or more non-carrier samples not found in sample coverage map");
-        }
-        return testSitesByOneSamplePoissonTest(sites, defaultPosition, carrierSamples, backgroundSamples);
-    }
+        Utils.validateArg(sampleCoverageMap.keySet().containsAll(carrierSamples),
+                "One or more carrier samples not found in sample coverage map");
+        Utils.validateArg(sampleCoverageMap.keySet().containsAll(backgroundSamples),
+                "One or more non-carrier samples not found in sample coverage map");
 
-    private SplitReadSite testSitesByOneSamplePoissonTest(final List<SplitReadSite> sites,
-                                                          final int defaultPosition,
-                                                          final Set<String> carrierSamples,
-                                                          final Set<String> backgroundSamples) {
+        // Default case
         if (sites.isEmpty() || carrierSamples.isEmpty()) return new SplitReadSite(defaultPosition, Collections.emptyMap());
+
         final long meanCoverage = Math.round(sampleCoverageMap.values().stream().mapToDouble(c -> c).sum()) / sampleCoverageMap.size();
-        final List<Tuple2<SplitReadSite,Double>> siteScorePairs = sites.stream()
-                .map(s -> new Tuple2<>(s, calculateOneSamplePoissonTest(s, carrierSamples, backgroundSamples, meanCoverage)))
+        final List<Tuple<SplitReadSite,Double>> siteScorePairs = sites.stream()
+                .map(s -> new Tuple<>(s, Double.valueOf(calculateOneSamplePoissonTest(s, carrierSamples, backgroundSamples, meanCoverage))))
                 .collect(Collectors.toList());
-        final double maxLogP = siteScorePairs.stream().mapToDouble(Tuple2::_2).max().getAsDouble();
+        final double minLogP = siteScorePairs.stream().mapToDouble(p -> p.b).min().getAsDouble();
         return siteScorePairs.stream()
-                .filter(p -> p._2 == maxLogP)
-                .min(Comparator.comparingInt(s -> Math.abs(s._1.getPosition() - defaultPosition)))
-                .get()._1;
+                .filter(p -> p.b == minLogP)
+                .min(Comparator.comparingInt(s -> Math.abs(s.a.getPosition() - defaultPosition)))
+                .get().a;
     }
 
+    /**
+     * Performs poisson test on a single site by computing the probability of observing the background counts
+     * under a carrier count distribution
+     *
+     * @param site
+     * @param carrierSamples
+     * @param backgroundSamples
+     * @param meanCoverage mean coverage of all samples
+     * @return probability
+     */
     private double calculateOneSamplePoissonTest(final SplitReadSite site,
                                                  final Set<String> carrierSamples,
                                                  final Set<String> backgroundSamples,
@@ -113,12 +213,19 @@ public class BreakpointRefiner {
         }
         final double medianBackgroundRate = getMedianNormalizedCount(backgroundSamples, site);
         final int backgroundCount = (int) Math.round(medianBackgroundRate * meanCoverage);
-        return 1.0 - cumulativePoissonProbability(meanCoverage * medianNormalizedCarrierCount, backgroundCount);
+        return cumulativePoissonProbability(meanCoverage * medianNormalizedCarrierCount, backgroundCount);
     }
 
+    /**
+     * Find the median of site counts in a subset of samples when normalized by sample coverage
+     *
+     * @param samples sample ids to restrict to
+     * @param site
+     * @return median
+     */
     private double getMedianNormalizedCount(final Set<String> samples, final SplitReadSite site) {
         final Collection<Double> normalizedCounts = samples.stream()
-                .map(s -> site.hasSample(s) ? site.getCount(s) / sampleCoverageMap.get(s) : 0.)
+                .map(s -> site.getCount(s) / sampleCoverageMap.get(s))
                 .collect(Collectors.toList());
         return median(normalizedCounts);
     }
@@ -132,7 +239,7 @@ public class BreakpointRefiner {
         return (sortedValues.get(sortedValues.size() / 2) + sortedValues.get((sortedValues.size() / 2) - 1)) / 2.;
     }
 
-    public static double cumulativePoissonProbability(final double mean, final int x) {
+    private static double cumulativePoissonProbability(final double mean, final int x) {
         if (x < 0) {
             return 0;
         }

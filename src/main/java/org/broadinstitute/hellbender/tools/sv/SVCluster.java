@@ -19,7 +19,6 @@ import org.broadinstitute.hellbender.cmdline.programgroups.StructuralVariantDisc
 import org.broadinstitute.hellbender.engine.*;
 import org.broadinstitute.hellbender.exceptions.UserException;
 import org.broadinstitute.hellbender.tools.spark.sv.utils.GATKSVVCFConstants;
-import org.broadinstitute.hellbender.utils.IntervalUtils;
 import org.broadinstitute.hellbender.utils.SimpleInterval;
 import org.broadinstitute.hellbender.utils.gcs.BucketUtils;
 
@@ -166,7 +165,7 @@ public final class SVCluster extends VariantWalker {
         defragmenter = new SVDepthOnlyCallDefragmenter(dictionary);
         nonDepthRawCallsBuffer = new ArrayList<>();
         clusterEngine = new SVClusterEngineNoCNV(dictionary, false, SVClusterEngine.BreakpointSummaryStrategy.MEDIAN_START_MEDIAN_END);
-        breakpointRefiner = new BreakpointRefiner(sampleCoverageMap);
+        breakpointRefiner = new BreakpointRefiner(sampleCoverageMap, dictionary);
         evidenceCollector = new PairedEndAndSplitReadEvidenceAggregator(splitReadSource, discordantPairSource, dictionary, null);
 
         writer = createVCFWriter(Paths.get(outputFile));
@@ -239,11 +238,11 @@ public final class SVCluster extends VariantWalker {
         }
 
         // Flush clusters if we hit the next contig
-        if (!call.getContig().equals(currentContig)) {
+        if (!call.getContigA().equals(currentContig)) {
             if (currentContig != null) {
                 processClusters();
             }
-            currentContig = call.getContig();
+            currentContig = call.getContigA();
         }
 
         // Add to clustering buffers
@@ -255,25 +254,30 @@ public final class SVCluster extends VariantWalker {
     }
 
     private void processClusters() {
-        logger.info("Clustering contig " + currentContig);
+        logger.info("Processing contig " + currentContig);
         final Stream<SVCallRecord> defragmentedStream = defragmenter.getOutput().stream();
         final Stream<SVCallRecord> nonDepthStream = nonDepthRawCallsBuffer.stream()
                 .flatMap(SVCallRecordUtils::convertInversionsToBreakends);
         //Combine and sort depth and non-depth calls because they must be added in dictionary order
         Stream.concat(defragmentedStream, nonDepthStream)
-                .sorted(IntervalUtils.getDictionaryOrderComparator(dictionary))
+                .sorted(SVCallRecordUtils.getSiteInfoComparator(dictionary))
                 .forEachOrdered(clusterEngine::add);
         nonDepthRawCallsBuffer.clear();
+        logger.info("Clustering...");
         final List<SVCallRecord> clusteredCalls = clusterEngine.getOutput();
+        logger.info("Aggregating evidence...");
         final List<SVCallRecordWithEvidence> callsWithEvidence = evidenceCollector.collectEvidence(clusteredCalls);
+        logger.info("Filtering and refining breakpoints...");
         final List<SVCallRecordWithEvidence> refinedCalls = callsWithEvidence.stream()
                 .filter(call -> !SVDepthOnlyCallDefragmenter.isDepthOnlyCall(call) || call.getLength() >= minDepthOnlySize)
                 .map(breakpointRefiner::refineCall)
                 .collect(Collectors.toList());
+        logger.info("Deduplicating variants...");
         final List<SVCallRecordWithEvidence> finalCalls = SVCallRecordUtils.deduplicateLocatables(refinedCalls, dictionary,
                 this::itemsAreIdenticalWithEvidence, this::deduplicateIdenticalItemsWithEvidence);
+        logger.info("Writing to file...");
         write(finalCalls);
-        logger.info("Contig " + currentContig + " successfully clustered");
+        logger.info("Contig " + currentContig + " successfully processed");
     }
 
     private boolean itemsAreIdenticalWithEvidence(final SVCallRecordWithEvidence a, final SVCallRecordWithEvidence b) {
@@ -284,6 +288,9 @@ public final class SVCluster extends VariantWalker {
     private SVCallRecordWithEvidence deduplicateIdenticalItemsWithEvidence(final Collection<SVCallRecordWithEvidence> items) {
         if (items.isEmpty()) {
             return null;
+        }
+        if (items.size() == 1) {
+            return items.iterator().next();
         }
         final List<Genotype> genotypes = items.stream()
                 .map(SVCallRecord::getGenotypes)
@@ -297,11 +304,11 @@ public final class SVCluster extends VariantWalker {
         final SVCallRecordWithEvidence example = items.iterator().next();
         return new SVCallRecordWithEvidence(
                 example.getId(),
-                example.getContig(),
-                example.getStart(),
-                example.getEnd(),
-                example.getStrand1(),
-                example.getStrand2(),
+                example.getContigA(),
+                example.getPositionA(),
+                example.getPositionB(),
+                example.getStrandA(),
+                example.getStrandB(),
                 example.getType(),
                 example.getLength(),
                 algorithms,
@@ -314,7 +321,7 @@ public final class SVCluster extends VariantWalker {
 
     private void write(final List<SVCallRecordWithEvidence> calls) {
         calls.stream()
-                .sorted(Comparator.comparing(c -> c.getPosition1AsInterval(), IntervalUtils.getDictionaryOrderComparator(dictionary)))
+                .sorted(SVCallRecordUtils.getSiteInfoComparator(dictionary))
                 .map(this::buildVariantContext)
                 .forEachOrdered(writer::add);
     }
@@ -332,7 +339,7 @@ public final class SVCluster extends VariantWalker {
     }
 
     public VariantContext buildVariantContext(final SVCallRecordWithEvidence call) {
-        return SVCallRecordUtils.getVariantBuilder(call, samplesList, false).make();
+        return SVCallRecordUtils.getVariantWithEvidenceBuilder(call).make();
     }
 
 }

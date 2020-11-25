@@ -1,15 +1,17 @@
 package org.broadinstitute.hellbender.tools.sv;
 
 import htsjdk.samtools.SAMSequenceDictionary;
-import htsjdk.samtools.util.Locatable;
-import org.broadinstitute.hellbender.utils.*;
+import org.broadinstitute.hellbender.utils.GenomeLoc;
+import org.broadinstitute.hellbender.utils.GenomeLocParser;
+import org.broadinstitute.hellbender.utils.SimpleInterval;
+import org.broadinstitute.hellbender.utils.Utils;
 import scala.Tuple2;
 
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public abstract class LocatableClusterEngine<T extends Locatable> {
+public abstract class LocatableClusterEngine<T extends Locatable2D> {
 
     protected final TreeMap<GenomeLoc, Integer> genomicToBinMap;
     protected final List<GenomeLoc> coverageIntervals;
@@ -82,9 +84,9 @@ public abstract class LocatableClusterEngine<T extends Locatable> {
     public void add(final T item) {
 
         // Start a new cluster if on a new contig
-        if (!item.getContig().equals(currentContig)) {
+        if (!item.getContigA().equals(currentContig)) {
             flushClusters();
-            currentContig = item.getContig();
+            currentContig = item.getContigA();
             idToItemMap.put(currentItemId, item);
             seedCluster(currentItemId);
             currentItemId++;
@@ -238,8 +240,8 @@ public abstract class LocatableClusterEngine<T extends Locatable> {
         if (item == null) {
             throw new IllegalArgumentException("Item id " + index + " not found in table");
         }
-        if (!currentContig.equals(item.getContig())) {
-            throw new IllegalArgumentException("Attempted to seed new cluster with item on contig " + item.getContig() + " but the current contig is " + currentContig);
+        if (!currentContig.equals(item.getContigA())) {
+            throw new IllegalArgumentException("Attempted to seed new cluster with item on contig " + item.getContigA() + " but the current contig is " + currentContig);
         }
         return item;
     }
@@ -267,8 +269,8 @@ public abstract class LocatableClusterEngine<T extends Locatable> {
         if (item == null) {
             throw new IllegalArgumentException("Item id " + item + " not found in table");
         }
-        if (!currentContig.equals(item.getContig())) {
-            throw new IllegalArgumentException("Attempted to add new item on contig " + item.getContig() + " but the current contig is " + currentContig);
+        if (!currentContig.equals(item.getContigA())) {
+            throw new IllegalArgumentException("Attempted to add new item on contig " + item.getContigA() + " but the current contig is " + currentContig);
         }
         if (clusterIndex >= currentClusters.size()) {
             throw new IllegalArgumentException("Specified cluster index " + clusterIndex + " is greater than the largest index.");

@@ -236,7 +236,7 @@ public class JointCNVSegmentation extends MultiVariantWalkerGroupedOnStart {
     private void write(final List<SVCallRecord> calls) {
         final ReferenceSequenceFile reference = ReferenceUtils.createReferenceReader(referenceArguments.getReferenceSpecifier());
         final List<VariantContext> sortedCalls = calls.stream()
-                .sorted(Comparator.comparing(c -> new SimpleInterval(c.getContig(), c.getStart(), c.getEnd()), //VCs have to be sorted by end as well
+                .sorted(Comparator.comparing(c -> new SimpleInterval(c.getContigA(), c.getPositionA(), c.getPositionB()), //VCs have to be sorted by end as well
                         IntervalUtils.getDictionaryOrderComparator(dictionary)))
                 .map(record -> buildVariantContext(record, reference))
                 .collect(Collectors.toList());
@@ -440,7 +440,7 @@ public class JointCNVSegmentation extends MultiVariantWalkerGroupedOnStart {
         Utils.nonNull(call);
         Utils.nonNull(reference);
         final List<Allele> outputAlleles = new ArrayList<>();
-        final Allele refAllele = Allele.create(ReferenceUtils.getRefBaseAtPosition(reference, call.getContig(), call.getStart()), true);
+        final Allele refAllele = Allele.create(ReferenceUtils.getRefBaseAtPosition(reference, call.getContigA(), call.getPositionA()), true);
         outputAlleles.add(refAllele);
         if (!call.getType().equals(StructuralVariantType.CNV)) {
             outputAlleles.add(Allele.create("<" + call.getType().name() + ">", false));
@@ -449,9 +449,9 @@ public class JointCNVSegmentation extends MultiVariantWalkerGroupedOnStart {
             outputAlleles.add(GATKSVVCFConstants.DUP_ALLELE);
         }
 
-        final VariantContextBuilder builder = new VariantContextBuilder("", call.getContig(), call.getStart(), call.getEnd(),
+        final VariantContextBuilder builder = new VariantContextBuilder("", call.getContigA(), call.getPositionA(), call.getPositionB(),
                 outputAlleles);
-        builder.attribute(VCFConstants.END_KEY, call.getEnd());
+        builder.attribute(VCFConstants.END_KEY, call.getPositionB());
         builder.attribute(GATKSVVCFConstants.SVLEN, call.getLength());
         if (call.getType().equals(StructuralVariantType.CNV)) {
             builder.attribute(VCFConstants.SVTYPE, "MCNV");

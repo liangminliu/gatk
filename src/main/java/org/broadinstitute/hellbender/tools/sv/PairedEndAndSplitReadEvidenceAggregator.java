@@ -91,7 +91,7 @@ public class PairedEndAndSplitReadEvidenceAggregator {
 
     private List<SVCallRecordWithEvidence> processEndPositions(final List<SVCallRecordWithEvidence> calls) {
         final OverlapDetector<SimpleInterval> splitReadEndIntervalOverlapDetector = getEvidenceOverlapDetector(calls, this::getEndSplitReadInterval);
-        return calls.stream().sorted(Comparator.comparing(c -> c.getPosition2AsInterval(), IntervalUtils.getDictionaryOrderComparator(dictionary)))
+        return calls.stream().sorted(Comparator.comparing(c -> c.getPositionBAsInterval(), IntervalUtils.getDictionaryOrderComparator(dictionary)))
                 .map(c -> processEndSplitReads(c, splitReadEndIntervalOverlapDetector))
                 .collect(Collectors.toList());
     }
@@ -118,49 +118,53 @@ public class PairedEndAndSplitReadEvidenceAggregator {
         } else {
             final List<DiscordantPairEvidence> discordantPairs = getDiscordantPairs(call, discordantPairIntervalOverlapDetector);
             callWithEvidence = new SVCallRecordWithEvidence(
-                    call.getId(), call.getContig(), call.getStart(), call.getEnd(), call.getStrand1(), call.getContig2(), call.getPosition2(), call.getStrand2(),
+                    call.getId(), call.getContigA(), call.getPositionA(), call.getStrandA(), call.getContigB(), call.getPositionB(), call.getStrandB(),
                     call.getType(), call.getLength(), call.getAlgorithms(), call.getGenotypes(), Collections.emptyList(), Collections.emptyList(), discordantPairs, null);
         }
         if (progressMeter != null) {
-            progressMeter.update(call.getPosition1AsInterval());
+            progressMeter.update(call.getPositionAAsInterval());
         }
         return callWithEvidence;
     }
 
     private SVCallRecordWithEvidence processStartSplitReads(final SVCallRecordWithEvidence call,
-                                                             final OverlapDetector<SimpleInterval> splitReadStartIntervalOverlapDetector) {
+                                                            final OverlapDetector<SimpleInterval> splitReadStartIntervalOverlapDetector) {
         Utils.nonNull(call);
         final SVCallRecordWithEvidence callWithEvidence;
         if (SVClusterEngine.isDepthOnlyCall(call)) {
             callWithEvidence = call;
         } else {
             final List<SplitReadEvidence> startSplitReads = getStartSplitReads(call, splitReadStartIntervalOverlapDetector);
-            final List<SplitReadSite> startSitesList = computeSites(startSplitReads, call.getStrand1());
+            final List<SplitReadSite> startSitesList = computeSites(startSplitReads, call.getStrandA());
             callWithEvidence = new SVCallRecordWithEvidence(
-                    call.getId(), call.getContig(), call.getStart(), call.getEnd(), call.getStrand1(), call.getContig2(), call.getPosition2(), call.getStrand2(),
-                    call.getType(), call.getLength(), call.getAlgorithms(), call.getGenotypes(), startSitesList, call.getEndSplitReadSites(), call.getDiscordantPairs(), null);
+                    call.getId(), call.getContigA(), call.getPositionA(), call.getStrandA(), call.getContigB(),
+                    call.getPositionB(), call.getStrandB(), call.getType(), call.getLength(), call.getAlgorithms(),
+                    call.getGenotypes(), startSitesList, call.getEndSplitReadSites(), call.getDiscordantPairs(),
+                    call.getCopyNumberDistribution());
         }
         if (progressMeter != null) {
-            progressMeter.update(call.getPosition1AsInterval());
+            progressMeter.update(call.getPositionAAsInterval());
         }
         return callWithEvidence;
     }
 
     private SVCallRecordWithEvidence processEndSplitReads(final SVCallRecordWithEvidence call,
-                                                           final OverlapDetector<SimpleInterval> splitReadEndIntervalOverlapDetector) {
+                                                          final OverlapDetector<SimpleInterval> splitReadEndIntervalOverlapDetector) {
         Utils.nonNull(call);
         final SVCallRecordWithEvidence refinedCall;
         if (SVClusterEngine.isDepthOnlyCall(call)) {
             refinedCall = call;
         } else {
             final List<SplitReadEvidence> endSplitReads = getEndSplitReads(call, splitReadEndIntervalOverlapDetector);
-            final List<SplitReadSite> endSitesList = computeSites(endSplitReads, call.getStrand2());
+            final List<SplitReadSite> endSitesList = computeSites(endSplitReads, call.getStrandB());
             refinedCall = new SVCallRecordWithEvidence(
-                    call.getId(), call.getContig(), call.getStart(), call.getEnd(), call.getStrand1(), call.getContig2(), call.getPosition2(), call.getStrand2(),
-                    call.getType(), call.getLength(), call.getAlgorithms(), call.getGenotypes(), call.getStartSplitReadSites(), endSitesList, call.getDiscordantPairs(), null);
+                    call.getId(), call.getContigA(), call.getPositionA(), call.getStrandA(), call.getContigB(),
+                    call.getPositionB(), call.getStrandB(), call.getType(), call.getLength(), call.getAlgorithms(),
+                    call.getGenotypes(), call.getStartSplitReadSites(), endSitesList, call.getDiscordantPairs(),
+                    call.getCopyNumberDistribution());
         }
         if (progressMeter != null) {
-            progressMeter.update(call.getPosition2AsInterval());
+            progressMeter.update(call.getPositionBAsInterval());
         }
         return refinedCall;
     }
@@ -184,20 +188,20 @@ public class PairedEndAndSplitReadEvidenceAggregator {
 
     private List<SplitReadEvidence> getStartSplitReads(final SVCallRecordWithEvidence call,
                                                        final OverlapDetector<SimpleInterval> splitReadStartOverlapDetector) {
-        return getSplitReads(getStartSplitReadInterval(call), call.getStrand1(), splitReadStartOverlapDetector);
+        return getSplitReads(getStartSplitReadInterval(call), call.getStrandA(), splitReadStartOverlapDetector);
     }
 
     private List<SplitReadEvidence> getEndSplitReads(final SVCallRecordWithEvidence call,
                                                      final OverlapDetector<SimpleInterval> splitReadEndOverlapDetector) {
-        return getSplitReads(getEndSplitReadInterval(call), call.getStrand2(), splitReadEndOverlapDetector);
+        return getSplitReads(getEndSplitReadInterval(call), call.getStrandB(), splitReadEndOverlapDetector);
     }
 
     private SimpleInterval getStartSplitReadInterval(final SVCallRecord call) {
-        return call.getPosition1AsInterval().expandWithinContig(splitReadPadding, dictionary);
+        return call.getPositionAAsInterval().expandWithinContig(splitReadPadding, dictionary);
     }
 
     private SimpleInterval getEndSplitReadInterval(final SVCallRecord call) {
-        return call.getPosition2AsInterval().expandWithinContig(splitReadPadding, dictionary);
+        return call.getPositionBAsInterval().expandWithinContig(splitReadPadding, dictionary);
     }
 
     private boolean invalidCacheInterval(final SimpleInterval cacheInterval, final SimpleInterval queryInterval) {
@@ -220,25 +224,25 @@ public class PairedEndAndSplitReadEvidenceAggregator {
         final SimpleInterval endInterval = getDiscordantPairEndInterval(call);
         return discordantPairSource.queryAndPrefetch(startInterval).stream()
                 .filter(e -> discordantPairOverlapsInterval(e, startInterval, endInterval))
-                .filter(e -> e.getStartStrand() == call.getStrand1() && e.getEndStrand() == call.getStrand2())
+                .filter(e -> e.getStartStrand() == call.getStrandA() && e.getEndStrand() == call.getStrandB())
                 .collect(Collectors.toList());
     }
 
     private SimpleInterval getDiscordantPairStartInterval(final SVCallRecord call) {
-        final String contig = call.getContig();
-        if (call.getStrand1()) {
-            return IntervalUtils.trimIntervalToContig(contig, call.getStart() - discordantPairOuterPadding, call.getStart() + discordantPairInnerPadding, dictionary.getSequence(contig).getSequenceLength());
+        final String contig = call.getContigA();
+        if (call.getStrandA()) {
+            return IntervalUtils.trimIntervalToContig(contig, call.getPositionA() - discordantPairOuterPadding, call.getPositionA() + discordantPairInnerPadding, dictionary.getSequence(contig).getSequenceLength());
         } else {
-            return IntervalUtils.trimIntervalToContig(contig, call.getStart() - discordantPairInnerPadding, call.getStart() + discordantPairOuterPadding, dictionary.getSequence(contig).getSequenceLength());
+            return IntervalUtils.trimIntervalToContig(contig, call.getPositionA() - discordantPairInnerPadding, call.getPositionA() + discordantPairOuterPadding, dictionary.getSequence(contig).getSequenceLength());
         }
     }
 
     private SimpleInterval getDiscordantPairEndInterval(final SVCallRecord call) {
-        final String contig = call.getContig2();
-        if (call.getStrand2()) {
-            return IntervalUtils.trimIntervalToContig(contig, call.getEnd() - discordantPairOuterPadding, call.getEnd() + discordantPairInnerPadding, dictionary.getSequence(contig).getSequenceLength());
+        final String contig = call.getContigB();
+        if (call.getStrandB()) {
+            return IntervalUtils.trimIntervalToContig(contig, call.getPositionB() - discordantPairOuterPadding, call.getPositionB() + discordantPairInnerPadding, dictionary.getSequence(contig).getSequenceLength());
         } else {
-            return IntervalUtils.trimIntervalToContig(contig, call.getEnd() - discordantPairInnerPadding, call.getEnd() + discordantPairOuterPadding, dictionary.getSequence(contig).getSequenceLength());
+            return IntervalUtils.trimIntervalToContig(contig, call.getPositionB() - discordantPairInnerPadding, call.getPositionB() + discordantPairOuterPadding, dictionary.getSequence(contig).getSequenceLength());
         }
     }
 
@@ -268,7 +272,7 @@ public class PairedEndAndSplitReadEvidenceAggregator {
                 }
                 position = e.getStart();
             }
-            if (e.getStrand() == strand) {
+            if (e.getStrand() == strand && e.getCount() > 0) {
                 final String sample = e.getSample();
                 sampleCounts.put(sample, e.getCount());
             }

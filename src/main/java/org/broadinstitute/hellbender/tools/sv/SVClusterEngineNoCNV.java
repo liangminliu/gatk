@@ -35,8 +35,8 @@ public class SVClusterEngineNoCNV extends SVClusterEngine {
     @Override
     protected SimpleInterval getClusteringInterval(final SVCallRecord call, final SimpleInterval clusterMinStartInterval) {
         final int padding = (int) Math.ceil(Math.max(Math.max(getEndpointClusteringPadding(call), call.getLength() * MIN_RECIPROCAL_OVERLAP_DEPTH), MIXED_CLUSTERING_WINDOW));
-        final int minStart = call.getStart() - padding;
-        final int maxStart = call.getStart() + padding;
+        final int minStart = call.getPositionA() - padding;
+        final int maxStart = call.getPositionA() + padding;
         final String currentContig = getCurrentContig();
         if (clusterMinStartInterval == null) {
             return IntervalUtils.trimIntervalToContig(currentContig, minStart, maxStart, dictionary.getSequence(currentContig).getSequenceLength());

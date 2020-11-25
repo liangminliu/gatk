@@ -1,11 +1,16 @@
 package org.broadinstitute.hellbender.tools.sv;
 
 import htsjdk.tribble.Feature;
+import org.broadinstitute.hellbender.utils.Utils;
 import org.broadinstitute.hellbender.utils.codecs.BafEvidenceCodec;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
+/**
+ * B-Allele frequency (BAF) evidence container
+ */
 public final class BafEvidence implements Feature {
 
     final String sample;
@@ -14,8 +19,8 @@ public final class BafEvidence implements Feature {
     final double value;
 
     public BafEvidence(final String sample, final String contig, final int position, final double value) {
-        this.sample = sample;
-        this.contig = contig;
+        this.sample = Utils.nonNull(sample);
+        this.contig = Utils.nonNull(contig);
         this.position = position;
         this.value = value;
     }
@@ -52,5 +57,21 @@ public final class BafEvidence implements Feature {
                 sample
         );
         return String.join(BafEvidenceCodec.COL_DELIMITER, data);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof BafEvidence)) return false;
+        BafEvidence that = (BafEvidence) o;
+        return position == that.position &&
+                Double.compare(that.value, value) == 0 &&
+                sample.equals(that.sample) &&
+                contig.equals(that.contig);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(sample, contig, position, value);
     }
 }

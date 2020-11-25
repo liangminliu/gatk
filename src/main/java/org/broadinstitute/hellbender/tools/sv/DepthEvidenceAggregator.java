@@ -76,18 +76,18 @@ public class DepthEvidenceAggregator {
     public CopyNumberPosteriorDistribution getCallPosterior(final SVCallRecord call, final String sample) {
         Utils.nonNull(call);
         Utils.nonNull(sample);
-        if (!call.getContig().equals(currentContig)) {
-            currentContig = call.getContig();
+        if (!call.getContigA().equals(currentContig)) {
+            currentContig = call.getContigA();
             currentPosteriorsTreeList = posteriorsReaders.stream().map(this::getCurrentPosteriorsTree).collect(Collectors.toList());
         }
         if (!(call.getType().equals(StructuralVariantType.DEL)  || call.getType().equals(StructuralVariantType.DUP)
                 || call.getType().equals(StructuralVariantType.BND))) {
             return null;
         }
-        if (!call.getContig().equals(call.getContig2())) {
+        if (!call.getContigA().equals(call.getContigB())) {
             return null;
         }
-        final SimpleInterval interval = new SimpleInterval(call.getContig(), call.getStart(), call.getEnd());
+        final SimpleInterval interval = new SimpleInterval(call.getContigA(), call.getPositionA(), call.getPositionB());
         final List<IntervalTree.Node<Map<String,double[]>>> posteriorsList = getBestPosteriors(interval);
         return getIntervalPosterior(interval, posteriorsList, sample);
     }

@@ -17,8 +17,8 @@ public class SVCallRecordWithEvidence extends SVCallRecord {
     private final CopyNumberPosteriorDistribution copyNumberDistribution;
 
     public SVCallRecordWithEvidence(final SVCallRecord record) {
-        super(record.getId(), record.getContig(), record.getStart(), record.getEnd(), record.getStrand1(), record.getContig2(),
-                record.getPosition2(), record.getStrand2(), record.getType(), record.getLength(), record.getAlgorithms(),
+        super(record.getId(), record.getContigA(), record.getPositionA(), record.getStrandA(), record.getContigB(),
+                record.getPositionB(), record.getStrandB(), record.getType(), record.getLength(), record.getAlgorithms(),
                 record.getGenotypes());
         this.startSplitReadSites = Collections.emptyList();
         this.endSplitReadSites = Collections.emptyList();
@@ -40,14 +40,13 @@ public class SVCallRecordWithEvidence extends SVCallRecord {
                                     final List<SplitReadSite> endSplitReadSites,
                                     final List<DiscordantPairEvidence> discordantPairs,
                                     final CopyNumberPosteriorDistribution copyNumberDistribution) {
-        this(id, contig, start, end, strand1, contig, end, strand2, type, length, algorithms, genotypes,
+        this(id, contig, start, strand1, contig, end, strand2, type, length, algorithms, genotypes,
                 startSplitReadSites, endSplitReadSites, discordantPairs, copyNumberDistribution);
     }
 
     public SVCallRecordWithEvidence(final String id,
                                     final String startContig,
                                     final int position1,
-                                    final int end1,
                                     final boolean strand1,
                                     final String contig2,
                                     final int position2,
@@ -60,7 +59,7 @@ public class SVCallRecordWithEvidence extends SVCallRecord {
                                     final List<SplitReadSite> endSplitReadSites,
                                     final List<DiscordantPairEvidence> discordantPairs,
                                     final CopyNumberPosteriorDistribution copyNumberDistribution) {
-        super(id, startContig, position1, end1, strand1, contig2, position2, strand2, type, length, algorithms, genotypes);
+        super(id, startContig, position1, strand1, contig2, position2, strand2, type, length, algorithms, genotypes);
         Utils.nonNull(startSplitReadSites);
         Utils.nonNull(endSplitReadSites);
         Utils.nonNull(discordantPairs);

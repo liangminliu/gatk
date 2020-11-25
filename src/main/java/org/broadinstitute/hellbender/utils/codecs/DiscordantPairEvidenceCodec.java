@@ -5,6 +5,7 @@ import htsjdk.samtools.util.IOUtil;
 import htsjdk.tribble.AsciiFeatureCodec;
 import htsjdk.tribble.readers.LineIterator;
 import org.broadinstitute.hellbender.tools.sv.DiscordantPairEvidence;
+import org.broadinstitute.hellbender.tools.sv.SVCallRecord;
 
 import java.util.List;
 
@@ -26,10 +27,10 @@ public class DiscordantPairEvidenceCodec extends AsciiFeatureCodec<DiscordantPai
         }
         final String startContig = tokens.get(0);
         final int start = Integer.parseUnsignedInt(tokens.get(1)) + 1; // Adjust for 0-based indexing
-        final boolean startStrand = tokens.get(2).equals(SVCallRecordCodec.STRAND_PLUS);
+        final boolean startStrand = tokens.get(2).equals(SVCallRecord.STRAND_PLUS);
         final String endContig = tokens.get(3);
         final int end = Integer.parseUnsignedInt(tokens.get(4)) + 1; // Adjust for 0-based indexing
-        final boolean endStrand = tokens.get(5).equals(SVCallRecordCodec.STRAND_PLUS);
+        final boolean endStrand = tokens.get(5).equals(SVCallRecord.STRAND_PLUS);
         final String sample = tokens.get(6);
         return new DiscordantPairEvidence(sample, startContig, start, startStrand, endContig, end, endStrand);
     }

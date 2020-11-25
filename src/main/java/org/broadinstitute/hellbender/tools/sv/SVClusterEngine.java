@@ -69,13 +69,13 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecord> {
         } else {
             mostPreciseCalls = cluster.stream().filter(call -> !SVDepthOnlyCallDefragmenter.isDepthOnlyCall(call)).collect(Collectors.toList());
         }
-        final List<Integer> startPositions = mostPreciseCalls.stream().map(SVCallRecord::getStart).sorted().collect(Collectors.toList());
-        final List<Integer> endPositions = mostPreciseCalls.stream().map(SVCallRecord::getEnd).sorted().collect(Collectors.toList());
+        final List<Integer> startPositions = mostPreciseCalls.stream().map(SVCallRecord::getPositionA).sorted().collect(Collectors.toList());
+        final List<Integer> endPositions = mostPreciseCalls.stream().map(SVCallRecord::getPositionB).sorted().collect(Collectors.toList());
         //use the mid value of the sorted list so the start and end represent real breakpoint observations
         final int medianStart = startPositions.get(startPositions.size() / 2);
         final int medianEnd = endPositions.get(endPositions.size() / 2);
         final SVCallRecord exampleCall = mostPreciseCalls.iterator().next();
-        final int length = exampleCall.getContig().equals(exampleCall.getContig2()) && !exampleCall.getType().equals(StructuralVariantType.INS) ? medianEnd - medianStart + 1 : exampleCall.getLength();
+        final int length = exampleCall.getContigA().equals(exampleCall.getContigB()) && !exampleCall.getType().equals(StructuralVariantType.INS) ? medianEnd - medianStart + 1 : exampleCall.getLength();
         final List<String> algorithms = cluster.stream().flatMap(v -> v.getAlgorithms().stream()).distinct().collect(Collectors.toList());
         final List<Genotype> clusterSamples = cluster.stream().flatMap(v -> v.getGenotypes().stream()).collect(Collectors.toList());
         final List<StructuralVariantType> observedTypes = cluster.stream().map(SVCallRecord::getType).distinct().collect(Collectors.toList());
@@ -115,8 +115,8 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecord> {
         }
 
         //TODO: merge evidence for WGS data
-        return new SVCallRecord(exampleCall.getId(), exampleCall.getContig(), newStart, newEnd, exampleCall.getStrand1(),
-                exampleCall.getStrand2(), clusterType, length, algorithms, clusterSamples);
+        return new SVCallRecord(exampleCall.getId(), exampleCall.getContigA(), newStart, newEnd, exampleCall.getStrandA(),
+                exampleCall.getStrandB(), clusterType, length, algorithms, clusterSamples);
     }
 
     @Override
@@ -145,11 +145,11 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecord> {
         final int minStart;
         final int maxStart;
         if (isDepthOnlyCall(call)) {
-            minStart = (int) (call.getEnd() - call.getLength() / MIN_RECIPROCAL_OVERLAP_DEPTH); //start of an overlapping event such that call represents (reciprocal overlap) of that event
-            maxStart = (int) (call.getStart() + (1.0 - MIN_RECIPROCAL_OVERLAP_DEPTH) * call.getLength());
+            minStart = (int) (call.getPositionB() - call.getLength() / MIN_RECIPROCAL_OVERLAP_DEPTH); //start of an overlapping event such that call represents (reciprocal overlap) of that event
+            maxStart = (int) (call.getPositionA() + (1.0 - MIN_RECIPROCAL_OVERLAP_DEPTH) * call.getLength());
         } else {
-            minStart = call.getStart() - MAX_BREAKEND_CLUSTERING_WINDOW;
-            maxStart = call.getStart() + MAX_BREAKEND_CLUSTERING_WINDOW;
+            minStart = call.getPositionA() - MAX_BREAKEND_CLUSTERING_WINDOW;
+            maxStart = call.getPositionA() + MAX_BREAKEND_CLUSTERING_WINDOW;
         }
         final String currentContig = getCurrentContig();
         if (clusterMinStartInterval == null) {
@@ -163,13 +163,13 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecord> {
 
     @Override
     public boolean itemsAreIdentical(final SVCallRecord a, final SVCallRecord b) {
-        return a.getContig().equals(b.getContig())
-                && a.getStart() == b.getStart()
-                && a.getContig2().equals(b.getContig2())
-                && a.getEnd() == b.getEnd()
+        return a.getContigA().equals(b.getContigA())
+                && a.getPositionA() == b.getPositionA()
+                && a.getContigB().equals(b.getContigB())
+                && a.getPositionB() == b.getPositionB()
                 && a.getType().equals(b.getType())
-                && a.getStrand1() == b.getStrand1()
-                && a.getStrand2() == b.getStrand2();
+                && a.getStrandA() == b.getStrandA()
+                && a.getStrandB() == b.getStrandB();
     }
 
     /**
@@ -194,11 +194,11 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecord> {
         final SVCallRecord example = items.iterator().next();
         return new SVCallRecord(
                 example.getId(),
-                example.getContig(),
-                example.getStart(),
-                example.getEnd(),
-                example.getStrand1(),
-                example.getStrand2(),
+                example.getContigA(),
+                example.getPositionA(),
+                example.getPositionB(),
+                example.getStrandA(),
+                example.getStrandB(),
                 example.getType(),
                 example.getLength(),
                 algorithms,
@@ -206,18 +206,18 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecord> {
     }
 
     protected boolean clusterTogetherBothDepthOnly(final SVCallRecord a, final SVCallRecord b) {
-        if (!a.getContig().equals(a.getContig2()) || !b.getContig().equals(b.getContig2())) {
+        if (!a.getContigA().equals(a.getContigB()) || !b.getContigA().equals(b.getContigB())) {
             throw new IllegalArgumentException("Attempted to cluster depth-only calls with endpoints on different contigs");
         }
-        final SimpleInterval intervalA = new SimpleInterval(a.getContig(), a.getStart(), a.getEnd());
-        final SimpleInterval intervalB = new SimpleInterval(b.getContig(), b.getStart(), b.getEnd());
+        final SimpleInterval intervalA = new SimpleInterval(a.getContigA(), a.getPositionA(), a.getPositionB());
+        final SimpleInterval intervalB = new SimpleInterval(b.getContigA(), b.getPositionA(), b.getPositionB());
         return IntervalUtils.isReciprocalOverlap(intervalA, intervalB, MIN_RECIPROCAL_OVERLAP_DEPTH);
     }
 
     protected boolean clusterTogetherBothWithEvidence(final SVCallRecord a, final SVCallRecord b) {
         // Reject if one is intrachromosomal and the other isn't
-        final boolean intrachromosomalA = a.getContig().equals(a.getContig2());
-        final boolean intrachromosomalB = b.getContig().equals(b.getContig2());
+        final boolean intrachromosomalA = a.getContigA().equals(a.getContigB());
+        final boolean intrachromosomalB = b.getContigB().equals(b.getContigB());
         if (intrachromosomalA != intrachromosomalB) return false;
 
         // Matching endpoints
@@ -229,29 +229,29 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecord> {
     }
 
     protected boolean clusterTogetherMixedEvidence(final SVCallRecord a, final SVCallRecord b) {
-        final boolean intrachromosomalA = a.getContig().equals(a.getContig2());
-        final boolean intrachromosomalB = b.getContig().equals(b.getContig2());
+        final boolean intrachromosomalA = a.getContigA().equals(a.getContigB());
+        final boolean intrachromosomalB = b.getContigA().equals(b.getContigB());
         if (!(intrachromosomalA && intrachromosomalB)) return false;
-        if (!a.getContig().equals(b.getContig())) return false;
-        return Math.abs(a.getStart() - b.getStart()) < MIXED_CLUSTERING_WINDOW
-                && Math.abs(a.getEnd() - b.getEnd()) < MIXED_CLUSTERING_WINDOW;
+        if (!a.getContigA().equals(b.getContigA())) return false;
+        return Math.abs(a.getPositionA() - b.getPositionA()) < MIXED_CLUSTERING_WINDOW
+                && Math.abs(a.getPositionB() - b.getPositionB()) < MIXED_CLUSTERING_WINDOW;
     }
 
     private SimpleInterval getStartClusteringInterval(final SVCallRecord call) {
         if (this.genomicToBinMap == null) {
             final int padding = getEndpointClusteringPadding(call);
-            return call.getPosition1AsInterval().expandWithinContig(padding, dictionary);
+            return call.getPositionAAsInterval().expandWithinContig(padding, dictionary);
         } else {
-            return call.getPosition1AsInterval();
+            return call.getPositionAAsInterval();
         }
     }
 
     protected SimpleInterval getEndClusteringInterval(final SVCallRecord call) {
         if (this.genomicToBinMap == null) {
             final int padding = getEndpointClusteringPadding(call);
-            return call.getPosition2AsInterval().expandWithinContig(padding, dictionary);
+            return call.getPositionBAsInterval().expandWithinContig(padding, dictionary);
         } else {
-            return call.getPosition1AsInterval();
+            return call.getPositionAAsInterval();
         }
     }
 
