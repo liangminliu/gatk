@@ -4,12 +4,15 @@ import com.google.common.annotations.VisibleForTesting;
 import htsjdk.samtools.SAMSequenceDictionary;
 import htsjdk.variant.variantcontext.Genotype;
 import htsjdk.variant.variantcontext.GenotypeBuilder;
-import org.broadinstitute.hellbender.exceptions.GATKException;
 import org.broadinstitute.hellbender.exceptions.UserException;
 import org.broadinstitute.hellbender.tools.spark.sv.utils.GATKSVVCFConstants;
-import org.broadinstitute.hellbender.utils.*;
+import org.broadinstitute.hellbender.utils.GenomeLoc;
+import org.broadinstitute.hellbender.utils.IntervalUtils;
+import org.broadinstitute.hellbender.utils.SimpleInterval;
+import org.broadinstitute.hellbender.utils.Utils;
 
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class SVDepthOnlyCallDefragmenter extends LocatableClusterEngine<SVCallRecord> {
@@ -25,8 +28,6 @@ public class SVDepthOnlyCallDefragmenter extends LocatableClusterEngine<SVCallRe
     public SVDepthOnlyCallDefragmenter(final SAMSequenceDictionary dictionary, double minSampleOverlap, List<GenomeLoc> coverageIntervals) {
         super(dictionary, CLUSTERING_TYPE.SINGLE_LINKAGE, coverageIntervals);
         this.minSampleOverlap = minSampleOverlap;
-
-
     }
 
     /**
@@ -44,6 +45,12 @@ public class SVDepthOnlyCallDefragmenter extends LocatableClusterEngine<SVCallRe
         final List<Genotype> clusterGenotypes = deduplicateGenotypes(cluster.stream().flatMap(v -> v.getGenotypes().stream()).collect(Collectors.toList()));
         return new SVCallRecord(exampleCall.getId(), exampleCall.getContigA(), newStart, newEnd, exampleCall.getStrandA(),
                 exampleCall.getStrandB(), exampleCall.getType(), length, algorithms, clusterGenotypes);
+    }
+
+    @Override
+    protected SVDeduplicator<SVCallRecord> getDeduplicator() {
+        final Function<Collection<SVCallRecord>,SVCallRecord> collapser = SVCallRecordUtils::deduplicate;
+        return new SVCallRecordDeduplicator(collapser, dictionary);
     }
 
     protected List<Genotype> deduplicateGenotypes(final List<Genotype> clusterGenotypes) {
@@ -189,18 +196,6 @@ public class SVDepthOnlyCallDefragmenter extends LocatableClusterEngine<SVCallRe
         final int newMinStart = Math.min(paddedCallStart, currentClusterInterval.getStart());
         final int newMaxEnd = Math.max(paddedCallEnd, currentClusterInterval.getEnd());
         return IntervalUtils.trimIntervalToContig(call.getContigA(), newMinStart, newMaxEnd, contigLength);
-    }
-
-    // Not used for single-linkage clustering
-    @Override
-    protected boolean itemsAreIdentical(final SVCallRecord a, final SVCallRecord b) {
-        throw new GATKException.ShouldNeverReachHereException("Deduplication should not be called for single-linkage clustering in depth-only defragmentation.");
-    }
-
-    // Not used for single-linkage clustering
-    @Override
-    protected SVCallRecord deduplicateIdenticalItems(final Collection<SVCallRecord> items) {
-        return null;
     }
 
     private SimpleInterval getCallInterval(final SVCallRecord call) {

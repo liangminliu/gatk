@@ -189,7 +189,7 @@ public final class SVCopyNumberPosteriors extends VariantWalker {
     @Override
     public void apply(final VariantContext variant, final ReadsContext readsContext,
                       final ReferenceContext referenceContext, final FeatureContext featureContext) {
-        final SVCallRecord call = SVCallRecordWithEvidence.create(variant);
+        final SVCallRecord call = SVCallRecordUtils.create(variant);
         if (!SVCallRecordUtils.isValidSize(call, minEventSize)
                 || !SVCallRecordUtils.intervalIsIncluded(call, includedIntervalsTreeMap, minDepthOnlyIncludeOverlap)) {
             return;

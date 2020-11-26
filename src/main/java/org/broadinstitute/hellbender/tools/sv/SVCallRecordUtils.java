@@ -8,18 +8,27 @@ import htsjdk.samtools.util.IntervalTree;
 import htsjdk.samtools.util.Locatable;
 import htsjdk.variant.variantcontext.*;
 import htsjdk.variant.vcf.VCFConstants;
+import org.broadinstitute.hellbender.exceptions.UserException;
+import org.broadinstitute.hellbender.tools.copynumber.gcnv.GermlineCNVSegmentVariantComposer;
 import org.broadinstitute.hellbender.tools.spark.sv.utils.GATKSVVCFConstants;
 import org.broadinstitute.hellbender.utils.IntervalUtils;
 import org.broadinstitute.hellbender.utils.SimpleInterval;
 import org.broadinstitute.hellbender.utils.Utils;
 
 import java.util.*;
-import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public final class SVCallRecordUtils {
+
+    public final static List<String> nonDepthCallerAttributes = Arrays.asList(
+            VCFConstants.END_KEY,
+            GATKSVVCFConstants.ALGORITHMS_ATTRIBUTE,
+            GATKSVVCFConstants.STRANDS_ATTRIBUTE,
+            GATKSVVCFConstants.SVLEN,
+            GATKSVVCFConstants.SVTYPE
+    );
 
     /**
      * Create a variant from a call for VCF interoperability
@@ -46,37 +55,52 @@ public final class SVCallRecordUtils {
         return builder;
     }
 
-    public static VariantContextBuilder fillMissingGenotypes(final VariantContextBuilder builder, final Set<String> samples) {
+    public static GenotypesContext fillMissingGenotypes(final GenotypesContext genotypes, final Set<String> samples) {
+        Utils.nonNull(genotypes);
         Utils.nonNull(samples);
-        Utils.containsNoNull(samples, "Null sample found");
-        final Set<String> missingSamples = Sets.difference(samples, builder.getGenotypes().getSampleNames());
-        if (!missingSamples.isEmpty()) {
-            final List<Genotype> genotypes = new ArrayList<>(builder.getGenotypes().size() + missingSamples.size());
-            genotypes.addAll(builder.getGenotypes());
-            for (final String sample : missingSamples) {
-                final GenotypeBuilder genotypeBuilder = new GenotypeBuilder(sample);
-                genotypes.add(genotypeBuilder.make());
-            }
-            builder.genotypes(genotypes);
+        final Set<String> missingSamples = Sets.difference(samples, genotypes.getSampleNames());
+        if (missingSamples.isEmpty()) {
+            return genotypes;
         }
-        return builder;
+        final List<Genotype> newGenotypes = new ArrayList<>(genotypes.size() + missingSamples.size());
+        newGenotypes.addAll(genotypes);
+        for (final String sample : missingSamples) {
+            final GenotypeBuilder genotypeBuilder = new GenotypeBuilder(sample);
+            newGenotypes.add(genotypeBuilder.make());
+        }
+        return GenotypesContext.copy(newGenotypes);
     }
 
-    public static VariantContextBuilder wipeGenotypesAndSetRawCallAttribute(final VariantContextBuilder builder,
-                                                                            final SVCallRecord call) {
-        Utils.nonNull(builder);
+    public static GenotypesContext getRawCallAttributesAndPreserve(final GenotypesContext genotypes,
+                                                                   final SVCallRecord call) {
+        return getRawCallAttributes(genotypes, call, GenotypeBuilder::new);
+    }
+
+    public static GenotypesContext getRawCallAttributesAndWipe(final GenotypesContext genotypes,
+                                                               final SVCallRecord call) {
+        return getRawCallAttributes(genotypes, call, g -> new GenotypeBuilder(g.getSampleName()));
+    }
+
+    private static GenotypesContext getRawCallAttributes(final GenotypesContext genotypes,
+                                                         final SVCallRecord call,
+                                                         final Function<Genotype,GenotypeBuilder> generator) {
+        Utils.nonNull(genotypes);
         Utils.nonNull(call);
-        final List<Genotype> genotypes = new ArrayList<>();
-        for (final Genotype genotype : builder.getGenotypes()) {
-            final GenotypeBuilder genotypeBuilder = new GenotypeBuilder(genotype.getSampleName());
-            if (SVCallRecord.isCarrier(genotype) || SVCallRecord.isRawCall(genotype)) {
-                genotypeBuilder.attribute(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_TRUE);
-            } else {
-                genotypeBuilder.attribute(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_FALSE);
-            }
-            genotypes.add(genotypeBuilder.make());
+        final List<Genotype> newGenotypes = new ArrayList<>();
+        for (final Genotype genotype : genotypes) {
+            final GenotypeBuilder genotypeBuilder = generator.apply(genotype);
+            setBuilderRawCallAttribute(genotypeBuilder, genotype);
+            newGenotypes.add(genotypeBuilder.make());
         }
-        return builder.genotypes(genotypes);
+        return GenotypesContext.copy(newGenotypes);
+    }
+
+    private static void setBuilderRawCallAttribute(final GenotypeBuilder builder, final Genotype genotype) {
+        if (SVCallRecord.isCarrier(genotype) || SVCallRecord.isRawCall(genotype)) {
+            builder.attribute(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_TRUE);
+        } else {
+            builder.attribute(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_FALSE);
+        }
     }
 
     public static VariantContextBuilder getVariantWithEvidenceBuilder(final SVCallRecordWithEvidence call) {
@@ -86,25 +110,20 @@ public final class SVCallRecordUtils {
         final Map<String,Integer> discordantPairCounts = getDiscordantPairCountsMap(call.getDiscordantPairs());
         final List<Genotype> genotypes = builder.getGenotypes();
         final List<Genotype> newGenotypes = new ArrayList<>(genotypes.size());
-        final boolean isDepthOnly = SVDepthOnlyCallDefragmenter.isDepthOnlyCall(call);
         for (final Genotype genotype : genotypes) {
             final String sample = genotype.getSampleName();
             final GenotypeBuilder genotypeBuilder = new GenotypeBuilder(sample);
-            if (!isDepthOnly) {
-                final int startCount = startSplitReadCounts == null ? 0 : startSplitReadCounts.getCount(sample);
-                final int endCount = endSplitReadCounts == null ? 0 : endSplitReadCounts.getCount(sample);
-                genotypeBuilder.attribute(GATKSVVCFConstants.START_SPLIT_READ_COUNT_ATTRIBUTE, startCount);
-                genotypeBuilder.attribute(GATKSVVCFConstants.END_SPLIT_READ_COUNT_ATTRIBUTE, endCount);
-                genotypeBuilder.attribute(GATKSVVCFConstants.DISCORDANT_PAIR_COUNT_ATTRIBUTE, discordantPairCounts.getOrDefault(sample, 0));
-            }
-            if (call.getCalledSamples().contains(sample)) {
-                genotypeBuilder.attribute(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_TRUE);
-            } else {
-                genotypeBuilder.attribute(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_FALSE);
-            }
+
+            final Integer startCount = startSplitReadCounts == null ? null : startSplitReadCounts.getCount(sample);
+            final Integer endCount = endSplitReadCounts == null ? null : endSplitReadCounts.getCount(sample);
+            final Integer pairedEndCount = discordantPairCounts.getOrDefault(sample, null);
+            genotypeBuilder.attribute(GATKSVVCFConstants.START_SPLIT_READ_COUNT_ATTRIBUTE, startCount);
+            genotypeBuilder.attribute(GATKSVVCFConstants.END_SPLIT_READ_COUNT_ATTRIBUTE, endCount);
+            genotypeBuilder.attribute(GATKSVVCFConstants.DISCORDANT_PAIR_COUNT_ATTRIBUTE, pairedEndCount);
             newGenotypes.add(genotypeBuilder.make());
         }
         builder.genotypes(newGenotypes);
+        builder.genotypes(getRawCallAttributesAndPreserve(builder.getGenotypes(), call));
         return builder;
     }
 
@@ -135,15 +154,15 @@ public final class SVCallRecordUtils {
                         Collectors.reducing(0, e -> 1, Integer::sum)));
     }
 
-    public static <T extends Locatable2D> Comparator<T> getLocatable2DComparator(final SAMSequenceDictionary dictionary) {
-        return (o1, o2) -> compareLocatable2D((T) o1, (T) o2, dictionary);
+    public static <T extends SVLocatable> Comparator<T> getSVLocatableComparator(final SAMSequenceDictionary dictionary) {
+        return (o1, o2) -> compareSVLocatables((T) o1, (T) o2, dictionary);
     }
 
-    public static <T extends SVCallRecord> Comparator<T> getSiteInfoComparator(final SAMSequenceDictionary dictionary) {
-        return (o1, o2) -> compareRecordsBySiteInfo((T) o1, (T) o2, dictionary);
+    public static <T extends SVCallRecord> Comparator<T> getCallComparator(final SAMSequenceDictionary dictionary) {
+        return (o1, o2) -> compareCalls((T) o1, (T) o2, dictionary);
     }
 
-    public static int compareLocatable2D(final Locatable2D first, final Locatable2D second, final SAMSequenceDictionary dictionary) {
+    public static int compareSVLocatables(final SVLocatable first, final SVLocatable second, final SAMSequenceDictionary dictionary) {
         Utils.nonNull(first);
         Utils.nonNull(second);
         // First locus
@@ -157,14 +176,14 @@ public final class SVCallRecordUtils {
         return compareB;
     }
 
-    public static int compareRecordsBySiteInfo(final SVCallRecord first, final SVCallRecord second, final SAMSequenceDictionary dictionary) {
-        final int compareLocatables = compareLocatable2D(first, second, dictionary);
+    public static int compareCalls(final SVCallRecord first, final SVCallRecord second, final SAMSequenceDictionary dictionary) {
+        final int compareLocatables = compareSVLocatables(first, second, dictionary);
         if (compareLocatables != 0) return compareLocatables;
 
         //Strands
-        final int compareStartStrand = Boolean.compare(first.getStrandA(), first.getStrandA());
+        final int compareStartStrand = Boolean.compare(first.getStrandA(), second.getStrandA());
         if (compareStartStrand != 0) return compareStartStrand;
-        final int compareEndStrand = Boolean.compare(first.getStrandB(), first.getStrandB());
+        final int compareEndStrand = Boolean.compare(first.getStrandB(), second.getStrandB());
         if (compareEndStrand != 0) return compareEndStrand;
 
         // Length
@@ -239,37 +258,6 @@ public final class SVCallRecordUtils {
         return Stream.of(positiveBreakend, negativeBreakend);
     }
 
-    public static <T extends Locatable2D> List<T> deduplicateLocatables(final List<T> items,
-                                                                      final SAMSequenceDictionary dictionary,
-                                                                      final BiPredicate<T,T> itemsAreIdenticalFunction,
-                                                                      final Function<Collection<T>,T> deduplicateIdenticalItemsFunction) {
-        final List<T> sortedItems = items.stream().sorted(getLocatable2DComparator(dictionary)).collect(Collectors.toList());
-        final List<T> deduplicatedList = new ArrayList<>();
-        int i = 0;
-        while (i < sortedItems.size()) {
-            final T record = sortedItems.get(i);
-            int j = i + 1;
-            final Collection<Integer> identicalItemIndexes = new ArrayList<>();
-            while (j < sortedItems.size() && record.getPositionA() == sortedItems.get(j).getPositionB()) {
-                final T other = sortedItems.get(j);
-                if (itemsAreIdenticalFunction.test(record, other)) {
-                    identicalItemIndexes.add(j);
-                }
-                j++;
-            }
-            if (identicalItemIndexes.isEmpty()) {
-                deduplicatedList.add(record);
-                i++;
-            } else {
-                identicalItemIndexes.add(i);
-                final List<T> identicalItems = identicalItemIndexes.stream().map(sortedItems::get).collect(Collectors.toList());
-                deduplicatedList.add(deduplicateIdenticalItemsFunction.apply(identicalItems));
-                i = j;
-            }
-        }
-        return deduplicatedList;
-    }
-
     public static void validateCoordinates(final SVCallRecord call) {
         Utils.nonNull(call);
         Utils.validateArg(call.getPositionA() >= 1, "Call start non-positive");
@@ -293,5 +281,196 @@ public final class SVCallRecordUtils {
 
     public static boolean isIntrachromosomal(final SVCallRecord call) {
         return call.getContigA().equals(call.getContigB());
+    }
+
+    public static SVCallRecord create(final VariantContext variant) {
+        Utils.nonNull(variant);
+        Utils.validate(variant.getAttributes().keySet().containsAll(nonDepthCallerAttributes), "Call is missing attributes");
+        final String id = variant.getID();
+        final String contigA = variant.getContig();
+        final int positionA = variant.getStart();
+        final int end = variant.getEnd();
+        final String contigB;
+        final int positionB;
+
+        // If END2 and CONTIG2 are both defined, use those.
+        // If neither is defined, use start contig and position.
+        // If only CONTIG2 is defined, END2 is taken as END
+        // Having only END2 is unacceptable
+        final boolean hasContig2 = variant.hasAttribute(GATKSVVCFConstants.CONTIG2_ATTRIBUTE);
+        final boolean hasEnd2 = variant.hasAttribute(GATKSVVCFConstants.END2_ATTRIBUTE);
+        if (hasContig2 && hasEnd2) {
+            contigB = variant.getAttributeAsString(GATKSVVCFConstants.CONTIG2_ATTRIBUTE, null);
+            positionB = variant.getAttributeAsInt(GATKSVVCFConstants.END2_ATTRIBUTE, 0);
+        } else if (!hasContig2 && !hasEnd2) {
+            contigB = contigA;
+            positionB = positionA;
+        } else if (hasContig2) {
+            contigB = variant.getAttributeAsString(GATKSVVCFConstants.CONTIG2_ATTRIBUTE, null);
+            positionB = end;
+        } else {
+            throw new UserException.BadInput("Attribute " + GATKSVVCFConstants.END2_ATTRIBUTE +
+                    " cannot be defined without " + GATKSVVCFConstants.CONTIG2_ATTRIBUTE);
+        }
+
+        final StructuralVariantType type = variant.getStructuralVariantType();
+        Utils.validateArg(variant.hasAttribute(GATKSVVCFConstants.ALGORITHMS_ATTRIBUTE), "Attribute " + GATKSVVCFConstants.ALGORITHMS_ATTRIBUTE + " is required");
+        final List<String> algorithms = variant.getAttributeAsStringList(GATKSVVCFConstants.ALGORITHMS_ATTRIBUTE, null);
+        Utils.validateArg(variant.hasAttribute(GATKSVVCFConstants.STRANDS_ATTRIBUTE), "Attribute " + GATKSVVCFConstants.STRANDS_ATTRIBUTE + " is required");
+        final String strands = variant.getAttributeAsString(GATKSVVCFConstants.STRANDS_ATTRIBUTE, null);
+        if (strands.length() != 2) {
+            throw new IllegalArgumentException("Strands field is not 2 characters long");
+        }
+        final String strand1Char = strands.substring(0, 1);
+        if (!strand1Char.equals(SVCallRecord.STRAND_PLUS) && !strand1Char.equals(SVCallRecord.STRAND_MINUS)) {
+            throw new IllegalArgumentException("Valid start strand not found");
+        }
+        final String strand2Char = strands.substring(1, 2);
+        if (!strand2Char.equals(SVCallRecord.STRAND_PLUS) && !strand2Char.equals(SVCallRecord.STRAND_MINUS)) {
+            throw new IllegalArgumentException("Valid end strand not found");
+        }
+        final boolean strand1 = strand1Char.equals(SVCallRecord.STRAND_PLUS);
+        final boolean strand2 = strand2Char.equals(SVCallRecord.STRAND_PLUS);
+        Utils.validateArg(variant.hasAttribute(GATKSVVCFConstants.SVLEN), "Attribute " + GATKSVVCFConstants.SVLEN + " is required");
+        final int length = variant.getAttributeAsInt(GATKSVVCFConstants.SVLEN, 0);
+        return new SVCallRecord(id, contigA, positionA, strand1, contigB, positionB, strand2, type, length, algorithms, variant.getGenotypes());
+    }
+
+    /**
+     *
+     * @param variant single-sample variant from a gCNV segments VCF
+     * @param minQuality drop events with quality lower than this
+     * @return
+     */
+    public static SVCallRecord createDepthOnlyFromGCNV(final VariantContext variant, final double minQuality) {
+        Utils.nonNull(variant);
+
+        if (variant.getGenotypes().size() == 1) {
+            //only cluster good variants
+            final Genotype g = variant.getGenotypes().get(0);
+            if (g.isHomRef() || (g.isNoCall() && !g.hasExtendedAttribute(GATKSVVCFConstants.COPY_NUMBER_FORMAT))
+                    || Integer.valueOf((String) g.getExtendedAttribute(GermlineCNVSegmentVariantComposer.QS)) < minQuality) {
+                return null;
+            }
+        }
+
+
+        final List<String> algorithms = Collections.singletonList(GATKSVVCFConstants.DEPTH_ALGORITHM);
+
+        boolean isDel = false;
+        for (final Genotype g : variant.getGenotypes()) {
+            if (g.isHomRef() || (g.isNoCall() && !g.hasExtendedAttribute(GATKSVVCFConstants.COPY_NUMBER_FORMAT))) {
+                continue;
+            }
+            if (variant.getReference().equals(Allele.REF_N)) {  //old segments VCFs had ref Ns and genotypes that didn't reflect ploidy accurately
+                if (g.getAlleles().stream().anyMatch(a -> a.equals(GATKSVVCFConstants.DEL_ALLELE))) {
+                    isDel = true;
+                } else if (g.getAlleles().stream().anyMatch(a -> a.equals(GATKSVVCFConstants.DUP_ALLELE))) {
+                    isDel = false;
+                } else if (g.getAlleles().stream().allMatch(a -> a.isNoCall())) {
+                    if (g.hasExtendedAttribute(GATKSVVCFConstants.COPY_NUMBER_FORMAT)) {
+                        isDel = (Integer.parseInt(g.getExtendedAttribute(GATKSVVCFConstants.COPY_NUMBER_FORMAT).toString()) < g.getPloidy());
+                    } else {
+                        throw new IllegalStateException("Genotype for sample " + g.getSampleName() + " at " + variant.getContig() + ":" + variant.getStart() + " had no CN attribute and will be dropped.");
+                    }
+                } else {
+                    throw new IllegalArgumentException("Segment VCF schema expects <DEL>, <DUP>, and no-call allele, but found "
+                            + g.getAllele(0) + " at " + variant.getContig() + ":" + variant.getStart());
+                }
+            } else {  //for spec-compliant VCFs (i.e. with non-N ref allele) we can just trust the ALT
+                isDel = (variant.getAlternateAlleles().contains(GATKSVVCFConstants.DEL_ALLELE)
+                        && !variant.getAlternateAlleles().contains(GATKSVVCFConstants.DUP_ALLELE));
+            }
+        }
+
+        final boolean startStrand = isDel ? true : false;
+        final boolean endStrand = isDel ? false : true;
+        final StructuralVariantType type;
+        if (!variant.getReference().equals(Allele.REF_N) && variant.getAlternateAlleles().contains(GATKSVVCFConstants.DUP_ALLELE)
+                && variant.getAlternateAlleles().contains(GATKSVVCFConstants.DEL_ALLELE)) {
+            type = StructuralVariantType.CNV;
+        } else {
+            type = isDel ? StructuralVariantType.DEL : StructuralVariantType.DUP;
+        }
+
+        final String id = variant.getID();
+        final String startContig = variant.getContig();
+        final int start = variant.getStart();
+        final int end = variant.getEnd();
+        final int length = end - start;
+        return new SVCallRecord(id, startContig, start, startStrand, startContig, end, endStrand, type, length, algorithms, variant.getGenotypes());
+    }
+
+    public static SVCallRecord deduplicate(final Collection<SVCallRecord> items) {
+        if (items.isEmpty()) {
+            return null;
+        }
+        final List<Genotype> genotypes = collapseRecordGenotypes(items);
+        final List<String> algorithms = collapseAlgorithms(items);
+        final SVCallRecord example = items.iterator().next();
+        return new SVCallRecord(
+                example.getId(),
+                example.getContigA(),
+                example.getPositionA(),
+                example.getPositionB(),
+                example.getStrandA(),
+                example.getStrandB(),
+                example.getType(),
+                example.getLength(),
+                algorithms,
+                genotypes);
+    }
+
+    public static SVCallRecordWithEvidence deduplicateWithEvidence(final Collection<SVCallRecordWithEvidence> items) {
+        if (items.isEmpty()) {
+            return null;
+        }
+        final List<Genotype> genotypes = collapseRecordGenotypes(items);
+        final List<String> algorithms = collapseAlgorithms(items);
+        final SVCallRecordWithEvidence example = items.iterator().next();
+        return new SVCallRecordWithEvidence(
+                example.getId(),
+                example.getContigA(),
+                example.getPositionA(),
+                example.getPositionB(),
+                example.getStrandA(),
+                example.getStrandB(),
+                example.getType(),
+                example.getLength(),
+                algorithms,
+                genotypes,
+                example.getStartSplitReadSites(),
+                example.getEndSplitReadSites(),
+                example.getDiscordantPairs(),
+                example.getCopyNumberDistribution());
+    }
+
+    private static List<Genotype> collapseRecordGenotypes(final Collection<? extends SVCallRecord> records) {
+        return records.stream()
+                .map(SVCallRecord::getGenotypes)
+                .flatMap(Collection::stream)
+                .collect(Collectors.groupingBy(Genotype::getSampleName))
+                .values()
+                .stream()
+                .map(SVCallRecordUtils::collapseSampleGenotypes)
+                .collect(Collectors.toList());
+    }
+
+    private static Genotype collapseSampleGenotypes(final Collection<Genotype> genotypes) {
+        final GenotypeBuilder builder = new GenotypeBuilder(genotypes.iterator().next().getSampleName());
+        if (genotypes.stream().anyMatch(SVCallRecord::isRawCall)) {
+            builder.attribute(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_TRUE);
+        } else {
+            builder.attribute(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_FALSE);
+        }
+        return builder.make();
+    }
+
+    private static List<String> collapseAlgorithms(final Collection<? extends SVCallRecord> records) {
+        return records.stream()
+                .map(SVCallRecord::getAlgorithms)
+                .flatMap(Collection::stream)
+                .distinct()
+                .collect(Collectors.toList());
     }
 }

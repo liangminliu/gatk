@@ -11,7 +11,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public abstract class LocatableClusterEngine<T extends Locatable2D> {
+public abstract class LocatableClusterEngine<T extends SVLocatable> {
 
     protected final TreeMap<GenomeLoc, Integer> genomicToBinMap;
     protected final List<GenomeLoc> coverageIntervals;
@@ -31,7 +31,9 @@ public abstract class LocatableClusterEngine<T extends Locatable2D> {
     private String currentContig;
 
 
-    public LocatableClusterEngine(final SAMSequenceDictionary dictionary, final CLUSTERING_TYPE clusteringType, final List<GenomeLoc> coverageIntervals) {
+    public LocatableClusterEngine(final SAMSequenceDictionary dictionary,
+                                  final CLUSTERING_TYPE clusteringType,
+                                  final List<GenomeLoc> coverageIntervals) {
         this.dictionary = dictionary;
         this.clusteringType = clusteringType;
         this.currentClusters = new LinkedList<>();
@@ -55,15 +57,14 @@ public abstract class LocatableClusterEngine<T extends Locatable2D> {
 
     abstract protected boolean clusterTogether(final T a, final T b);
     abstract protected SimpleInterval getClusteringInterval(final T item, final SimpleInterval currentClusterInterval);
-    abstract protected T deduplicateIdenticalItems(final Collection<T> items);
-    abstract protected boolean itemsAreIdentical(final T a, final T b);
     abstract protected T flattenCluster(final Collection<T> cluster);
+    abstract protected SVDeduplicator<T> getDeduplicator();
 
     public List<T> getOutput() {
         flushClusters();
         final List<T> output;
         if (clusteringType == CLUSTERING_TYPE.MAX_CLIQUE) {
-            output = SVCallRecordUtils.deduplicateLocatables(outputBuffer, dictionary, this::itemsAreIdentical, this::deduplicateIdenticalItems);
+            output = getDeduplicator().deduplicateItems(outputBuffer);
         } else {
             output = new ArrayList<>(outputBuffer);
         }
@@ -285,4 +286,5 @@ public abstract class LocatableClusterEngine<T extends Locatable2D> {
             currentClusters.add(clusterIndex, new Tuple2<>(clusteringStartInterval, clusterItems));
         }
     }
+
 }

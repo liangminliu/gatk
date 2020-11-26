@@ -1,9 +1,9 @@
 package org.broadinstitute.hellbender.tools.sv;
 
-import htsjdk.variant.variantcontext.*;
-import htsjdk.variant.vcf.VCFConstants;
-import org.broadinstitute.hellbender.exceptions.UserException;
-import org.broadinstitute.hellbender.tools.copynumber.gcnv.GermlineCNVSegmentVariantComposer;
+import htsjdk.variant.variantcontext.Genotype;
+import htsjdk.variant.variantcontext.GenotypeType;
+import htsjdk.variant.variantcontext.GenotypesContext;
+import htsjdk.variant.variantcontext.StructuralVariantType;
 import org.broadinstitute.hellbender.tools.spark.sv.utils.GATKSVVCFConstants;
 import org.broadinstitute.hellbender.utils.SimpleInterval;
 import org.broadinstitute.hellbender.utils.Utils;
@@ -12,7 +12,7 @@ import org.broadinstitute.hellbender.utils.variant.VariantContextGetters;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class SVCallRecord implements Locatable2D {
+public class SVCallRecord implements SVLocatable {
 
     public static final String STRAND_PLUS = "+";
     public static final String STRAND_MINUS = "-";
@@ -32,132 +32,6 @@ public class SVCallRecord implements Locatable2D {
     private Set<String> allSamples;
     private Set<String> calledSamples;
     private Set<String> carrierSamples;
-
-    private final static List<String> nonDepthCallerAttributes = Arrays.asList(
-            VCFConstants.END_KEY,
-            GATKSVVCFConstants.ALGORITHMS_ATTRIBUTE,
-            GATKSVVCFConstants.STRANDS_ATTRIBUTE,
-            GATKSVVCFConstants.SVLEN,
-            GATKSVVCFConstants.SVTYPE
-    );
-
-    public static SVCallRecord create(final VariantContext variant) {
-        Utils.nonNull(variant);
-        Utils.validate(variant.getAttributes().keySet().containsAll(nonDepthCallerAttributes), "Call is missing attributes");
-        final String id = variant.getID();
-        final String contigA = variant.getContig();
-        final int positionA = variant.getStart();
-        final int end = variant.getEnd();
-        final String contigB;
-        final int positionB;
-
-        // If END2 and CONTIG2 are both defined, use those.
-        // If neither is defined, use start contig and position.
-        // If only CONTIG2 is defined, END2 is taken as END
-        // Having only END2 is unacceptable
-        final boolean hasContig2 = variant.hasAttribute(GATKSVVCFConstants.CONTIG2_ATTRIBUTE);
-        final boolean hasEnd2 = variant.hasAttribute(GATKSVVCFConstants.END2_ATTRIBUTE);
-        if (hasContig2 && hasEnd2) {
-            contigB = variant.getAttributeAsString(GATKSVVCFConstants.CONTIG2_ATTRIBUTE, null);
-            positionB = variant.getAttributeAsInt(GATKSVVCFConstants.END2_ATTRIBUTE, 0);
-        } else if (!hasContig2 && !hasEnd2) {
-            contigB = contigA;
-            positionB = positionA;
-        } else if (hasContig2) {
-            contigB = variant.getAttributeAsString(GATKSVVCFConstants.CONTIG2_ATTRIBUTE, null);
-            positionB = end;
-        } else {
-            throw new UserException.BadInput("Attribute " + GATKSVVCFConstants.END2_ATTRIBUTE +
-                    " cannot be defined without " + GATKSVVCFConstants.CONTIG2_ATTRIBUTE);
-        }
-
-        final StructuralVariantType type = variant.getStructuralVariantType();
-        Utils.validateArg(variant.hasAttribute(GATKSVVCFConstants.ALGORITHMS_ATTRIBUTE), "Attribute " + GATKSVVCFConstants.ALGORITHMS_ATTRIBUTE + " is required");
-        final List<String> algorithms = variant.getAttributeAsStringList(GATKSVVCFConstants.ALGORITHMS_ATTRIBUTE, null);
-        Utils.validateArg(variant.hasAttribute(GATKSVVCFConstants.STRANDS_ATTRIBUTE), "Attribute " + GATKSVVCFConstants.STRANDS_ATTRIBUTE + " is required");
-        final String strands = variant.getAttributeAsString(GATKSVVCFConstants.STRANDS_ATTRIBUTE, null);
-        if (strands.length() != 2) {
-            throw new IllegalArgumentException("Strands field is not 2 characters long");
-        }
-        final String strand1Char = strands.substring(0, 1);
-        if (!strand1Char.equals(STRAND_PLUS) && !strand1Char.equals(STRAND_MINUS)) {
-            throw new IllegalArgumentException("Valid start strand not found");
-        }
-        final String strand2Char = strands.substring(1, 2);
-        if (!strand2Char.equals(STRAND_PLUS) && !strand2Char.equals(STRAND_MINUS)) {
-            throw new IllegalArgumentException("Valid end strand not found");
-        }
-        final boolean strand1 = strand1Char.equals(STRAND_PLUS);
-        final boolean strand2 = strand2Char.equals(STRAND_PLUS);
-        Utils.validateArg(variant.hasAttribute(GATKSVVCFConstants.SVLEN), "Attribute " + GATKSVVCFConstants.SVLEN + " is required");
-        final int length = variant.getAttributeAsInt(GATKSVVCFConstants.SVLEN, 0);
-        return new SVCallRecord(id, contigA, positionA, strand1, contigB, positionB, strand2, type, length, algorithms, variant.getGenotypes());
-    }
-
-    /**
-     *
-     * @param variant single-sample variant from a gCNV segments VCF
-     * @param minQuality drop events with quality lower than this
-     * @return
-     */
-    public static SVCallRecord createDepthOnlyFromGCNV(final VariantContext variant, final double minQuality) {
-        Utils.nonNull(variant);
-
-        if (variant.getGenotypes().size() == 1) {
-            //only cluster good variants
-            final Genotype g = variant.getGenotypes().get(0);
-            if (g.isHomRef() || (g.isNoCall() && !g.hasExtendedAttribute(GATKSVVCFConstants.COPY_NUMBER_FORMAT))
-                    || Integer.valueOf((String) g.getExtendedAttribute(GermlineCNVSegmentVariantComposer.QS)) < minQuality) {
-                return null;
-            }
-        }
-
-
-        final List<String> algorithms = Collections.singletonList(GATKSVVCFConstants.DEPTH_ALGORITHM);
-
-        boolean isDel = false;
-        for (final Genotype g : variant.getGenotypes()) {
-            if (g.isHomRef() || (g.isNoCall() && !g.hasExtendedAttribute(GATKSVVCFConstants.COPY_NUMBER_FORMAT))) {
-                continue;
-            }
-            if (variant.getReference().equals(Allele.REF_N)) {  //old segments VCFs had ref Ns and genotypes that didn't reflect ploidy accurately
-                if (g.getAlleles().stream().anyMatch(a -> a.equals(GATKSVVCFConstants.DEL_ALLELE))) {
-                    isDel = true;
-                } else if (g.getAlleles().stream().anyMatch(a -> a.equals(GATKSVVCFConstants.DUP_ALLELE))) {
-                    isDel = false;
-                } else if (g.getAlleles().stream().allMatch(a -> a.isNoCall())) {
-                    if (g.hasExtendedAttribute(GATKSVVCFConstants.COPY_NUMBER_FORMAT)) {
-                        isDel = (Integer.parseInt(g.getExtendedAttribute(GATKSVVCFConstants.COPY_NUMBER_FORMAT).toString()) < g.getPloidy());
-                    } else {
-                        throw new IllegalStateException("Genotype for sample " + g.getSampleName() + " at " + variant.getContig() + ":" + variant.getStart() + " had no CN attribute and will be dropped.");
-                    }
-                } else {
-                    throw new IllegalArgumentException("Segment VCF schema expects <DEL>, <DUP>, and no-call allele, but found "
-                            + g.getAllele(0) + " at " + variant.getContig() + ":" + variant.getStart());
-                }
-            } else {  //for spec-compliant VCFs (i.e. with non-N ref allele) we can just trust the ALT
-                isDel = (variant.getAlternateAlleles().contains(GATKSVVCFConstants.DEL_ALLELE)
-                        && !variant.getAlternateAlleles().contains(GATKSVVCFConstants.DUP_ALLELE));
-            }
-        }
-
-        final boolean startStrand = isDel ? true : false;
-        final boolean endStrand = isDel ? false : true;
-        final StructuralVariantType type;
-        if (!variant.getReference().equals(Allele.REF_N) && variant.getAlternateAlleles().contains(GATKSVVCFConstants.DUP_ALLELE)
-                && variant.getAlternateAlleles().contains(GATKSVVCFConstants.DEL_ALLELE)) {
-            type = StructuralVariantType.CNV;
-        } else {
-            type = isDel ? StructuralVariantType.DEL : StructuralVariantType.DUP;
-        }
-
-        final String id = variant.getID();
-        final String startContig = variant.getContig();
-        final int start = variant.getStart();
-        final int end = variant.getEnd();
-        final int length = end - start;
-        return new SVCallRecord(id, startContig, start, startStrand, startContig, end, endStrand, type, length, algorithms, variant.getGenotypes());
-    }
 
     public SVCallRecord(final String id,
                         final String contig,
@@ -292,11 +166,11 @@ public class SVCallRecord implements Locatable2D {
         return genotypes;
     }
 
-    public SimpleInterval getPositionAAsInterval() {
+    public SimpleInterval getPositionAInterval() {
         return new SimpleInterval(contigA, positionA, positionA);
     }
 
-    public SimpleInterval getPositionBAsInterval() {
+    public SimpleInterval getPositionBInterval() {
         return new SimpleInterval(contigB, positionB, positionB);
     }
 

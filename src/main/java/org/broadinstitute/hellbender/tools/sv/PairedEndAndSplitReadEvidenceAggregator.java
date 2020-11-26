@@ -91,7 +91,7 @@ public class PairedEndAndSplitReadEvidenceAggregator {
 
     private List<SVCallRecordWithEvidence> processEndPositions(final List<SVCallRecordWithEvidence> calls) {
         final OverlapDetector<SimpleInterval> splitReadEndIntervalOverlapDetector = getEvidenceOverlapDetector(calls, this::getEndSplitReadInterval);
-        return calls.stream().sorted(Comparator.comparing(c -> c.getPositionBAsInterval(), IntervalUtils.getDictionaryOrderComparator(dictionary)))
+        return calls.stream().sorted(Comparator.comparing(c -> c.getPositionBInterval(), IntervalUtils.getDictionaryOrderComparator(dictionary)))
                 .map(c -> processEndSplitReads(c, splitReadEndIntervalOverlapDetector))
                 .collect(Collectors.toList());
     }
@@ -122,7 +122,7 @@ public class PairedEndAndSplitReadEvidenceAggregator {
                     call.getType(), call.getLength(), call.getAlgorithms(), call.getGenotypes(), Collections.emptyList(), Collections.emptyList(), discordantPairs, null);
         }
         if (progressMeter != null) {
-            progressMeter.update(call.getPositionAAsInterval());
+            progressMeter.update(call.getPositionAInterval());
         }
         return callWithEvidence;
     }
@@ -143,7 +143,7 @@ public class PairedEndAndSplitReadEvidenceAggregator {
                     call.getCopyNumberDistribution());
         }
         if (progressMeter != null) {
-            progressMeter.update(call.getPositionAAsInterval());
+            progressMeter.update(call.getPositionAInterval());
         }
         return callWithEvidence;
     }
@@ -164,7 +164,7 @@ public class PairedEndAndSplitReadEvidenceAggregator {
                     call.getCopyNumberDistribution());
         }
         if (progressMeter != null) {
-            progressMeter.update(call.getPositionBAsInterval());
+            progressMeter.update(call.getPositionBInterval());
         }
         return refinedCall;
     }
@@ -197,11 +197,11 @@ public class PairedEndAndSplitReadEvidenceAggregator {
     }
 
     private SimpleInterval getStartSplitReadInterval(final SVCallRecord call) {
-        return call.getPositionAAsInterval().expandWithinContig(splitReadPadding, dictionary);
+        return call.getPositionAInterval().expandWithinContig(splitReadPadding, dictionary);
     }
 
     private SimpleInterval getEndSplitReadInterval(final SVCallRecord call) {
-        return call.getPositionBAsInterval().expandWithinContig(splitReadPadding, dictionary);
+        return call.getPositionBInterval().expandWithinContig(splitReadPadding, dictionary);
     }
 
     private boolean invalidCacheInterval(final SimpleInterval cacheInterval, final SimpleInterval queryInterval) {

@@ -21,10 +21,7 @@ import org.broadinstitute.hellbender.tools.copynumber.PostprocessGermlineCNVCall
 import org.broadinstitute.hellbender.tools.copynumber.gcnv.GermlineCNVSegmentVariantComposer;
 import org.broadinstitute.hellbender.tools.spark.sv.utils.GATKSVVCFConstants;
 import org.broadinstitute.hellbender.tools.spark.sv.utils.GATKSVVCFHeaderLines;
-import org.broadinstitute.hellbender.tools.sv.SVCallRecord;
-import org.broadinstitute.hellbender.tools.sv.SVCallRecordWithEvidence;
-import org.broadinstitute.hellbender.tools.sv.SVClusterEngine;
-import org.broadinstitute.hellbender.tools.sv.SVDepthOnlyCallDefragmenter;
+import org.broadinstitute.hellbender.tools.sv.*;
 import org.broadinstitute.hellbender.utils.*;
 import org.broadinstitute.hellbender.utils.genotyper.IndexedSampleList;
 import org.broadinstitute.hellbender.utils.logging.OneShotLogger;
@@ -206,7 +203,7 @@ public class JointCNVSegmentation extends MultiVariantWalkerGroupedOnStart {
             } else {
                 doDefragmentation = true;
             }
-            final SVCallRecord record = SVCallRecord.createDepthOnlyFromGCNV(vc, minQS);
+            final SVCallRecord record = SVCallRecordUtils.createDepthOnlyFromGCNV(vc, minQS);
             if (record != null) {
                 if (doDefragmentation) {
                     defragmenter.add(new SVCallRecordWithEvidence(record));

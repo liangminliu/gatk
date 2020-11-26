@@ -154,7 +154,7 @@ public final class MergeSVCalls extends GATKTool {
     }
 
     private void sortAndDeduplicateRecords() {
-        records = records.stream().sorted(SVCallRecordUtils.getSiteInfoComparator(dictionary)).collect(Collectors.toList());
+        records = records.stream().sorted(SVCallRecordUtils.getCallComparator(dictionary)).collect(Collectors.toList());
         final List<SVCallRecord> newRecords = new ArrayList<>(records.size());
         List<SVCallRecord> currentCluster = new ArrayList<>();
         SVCallRecord exampleRecord = null;
@@ -162,7 +162,7 @@ public final class MergeSVCalls extends GATKTool {
             if (currentCluster.isEmpty()) {
                 currentCluster.add(record);
                 exampleRecord = record;
-            } else if (SVCallRecordUtils.compareRecordsBySiteInfo(record, exampleRecord, dictionary) == 0) {
+            } else if (SVCallRecordUtils.compareCalls(record, exampleRecord, dictionary) == 0) {
                 currentCluster.add(record);
             } else {
                 newRecords.add(combineRecords(currentCluster, samples));
@@ -260,10 +260,10 @@ public final class MergeSVCalls extends GATKTool {
         final Stream<SVCallRecord> inputRecords;
         if (headerSource != null && headerSource.getValue().equals(PostprocessGermlineCNVCalls.class.getSimpleName())) {
             inputRecords = inputVariants
-                    .map(v -> SVCallRecord.createDepthOnlyFromGCNV(v, minGCNVQuality))
+                    .map(v -> SVCallRecordUtils.createDepthOnlyFromGCNV(v, minGCNVQuality))
                     .filter(r -> r != null);
         } else {
-            inputRecords = inputVariants.map(SVCallRecord::create);
+            inputRecords = inputVariants.map(SVCallRecordUtils::create);
         }
         inputRecords.forEachOrdered(records::add);
     }
@@ -294,7 +294,10 @@ public final class MergeSVCalls extends GATKTool {
     }
 
     private VariantContext createVariant(final SVCallRecord call) {
-        return SVCallRecordUtils.wipeGenotypesAndSetRawCallAttribute(SVCallRecordUtils.fillMissingGenotypes(SVCallRecordUtils.getVariantBuilder(call), samples), call).make();
+        final VariantContextBuilder builder = SVCallRecordUtils.getVariantBuilder(call);
+        builder.genotypes(SVCallRecordUtils.fillMissingGenotypes(builder.getGenotypes(), samples));
+        builder.genotypes(SVCallRecordUtils.getRawCallAttributesAndWipe(builder.getGenotypes(), call));
+        return builder.make();
     }
 
     private VCFHeader getVcfHeader() {

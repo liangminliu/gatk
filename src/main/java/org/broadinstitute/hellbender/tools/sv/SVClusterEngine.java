@@ -11,6 +11,7 @@ import org.broadinstitute.hellbender.utils.SimpleInterval;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class SVClusterEngine extends LocatableClusterEngine<SVCallRecord> {
@@ -162,47 +163,9 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecord> {
     }
 
     @Override
-    public boolean itemsAreIdentical(final SVCallRecord a, final SVCallRecord b) {
-        return a.getContigA().equals(b.getContigA())
-                && a.getPositionA() == b.getPositionA()
-                && a.getContigB().equals(b.getContigB())
-                && a.getPositionB() == b.getPositionB()
-                && a.getType().equals(b.getType())
-                && a.getStrandA() == b.getStrandA()
-                && a.getStrandB() == b.getStrandB();
-    }
-
-    /**
-     *  Merge genotypes and algorithms for multiple calls describing the same event
-     * @param items all entries are assumed to describe the same event, i.e. satisfy {@link #itemsAreIdentical}
-     * @return  a single representative call
-     */
-    @Override
-    public SVCallRecord deduplicateIdenticalItems(final Collection<SVCallRecord> items) {
-        if (items.isEmpty()) {
-            return null;
-        }
-        final List<Genotype> genotypes = items.stream()
-                .map(SVCallRecord::getGenotypes)
-                .flatMap(Collection::stream)
-                .collect(Collectors.toList());
-        final List<String> algorithms = items.stream()
-                .map(SVCallRecord::getAlgorithms)
-                .flatMap(Collection::stream)
-                .distinct()
-                .collect(Collectors.toList());
-        final SVCallRecord example = items.iterator().next();
-        return new SVCallRecord(
-                example.getId(),
-                example.getContigA(),
-                example.getPositionA(),
-                example.getPositionB(),
-                example.getStrandA(),
-                example.getStrandB(),
-                example.getType(),
-                example.getLength(),
-                algorithms,
-                genotypes);
+    protected SVDeduplicator<SVCallRecord> getDeduplicator() {
+        final Function<Collection<SVCallRecord>,SVCallRecord> collapser = SVCallRecordUtils::deduplicate;
+        return new SVCallRecordDeduplicator(collapser, dictionary);
     }
 
     protected boolean clusterTogetherBothDepthOnly(final SVCallRecord a, final SVCallRecord b) {
@@ -240,18 +203,18 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecord> {
     private SimpleInterval getStartClusteringInterval(final SVCallRecord call) {
         if (this.genomicToBinMap == null) {
             final int padding = getEndpointClusteringPadding(call);
-            return call.getPositionAAsInterval().expandWithinContig(padding, dictionary);
+            return call.getPositionAInterval().expandWithinContig(padding, dictionary);
         } else {
-            return call.getPositionAAsInterval();
+            return call.getPositionAInterval();
         }
     }
 
     protected SimpleInterval getEndClusteringInterval(final SVCallRecord call) {
         if (this.genomicToBinMap == null) {
             final int padding = getEndpointClusteringPadding(call);
-            return call.getPositionBAsInterval().expandWithinContig(padding, dictionary);
+            return call.getPositionBInterval().expandWithinContig(padding, dictionary);
         } else {
-            return call.getPositionAAsInterval();
+            return call.getPositionBInterval();
         }
     }
 

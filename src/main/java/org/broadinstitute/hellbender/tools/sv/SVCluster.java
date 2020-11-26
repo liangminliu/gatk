@@ -2,7 +2,6 @@ package org.broadinstitute.hellbender.tools.sv;
 
 import htsjdk.samtools.SAMSequenceDictionary;
 import htsjdk.samtools.util.IntervalTree;
-import htsjdk.variant.variantcontext.Genotype;
 import htsjdk.variant.variantcontext.VariantContext;
 import htsjdk.variant.variantcontext.writer.VariantContextWriter;
 import htsjdk.variant.vcf.VCFFormatHeaderLine;
@@ -26,6 +25,7 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -139,6 +139,7 @@ public final class SVCluster extends VariantWalker {
     private SVClusterEngine clusterEngine;
     private BreakpointRefiner breakpointRefiner;
     private PairedEndAndSplitReadEvidenceAggregator evidenceCollector;
+    private SVCallRecordDeduplicator<SVCallRecordWithEvidence> deduplicator;
     private Map<String,Double> sampleCoverageMap;
     private List<String> samplesList;
     private String currentContig;
@@ -167,6 +168,9 @@ public final class SVCluster extends VariantWalker {
         clusterEngine = new SVClusterEngineNoCNV(dictionary, false, SVClusterEngine.BreakpointSummaryStrategy.MEDIAN_START_MEDIAN_END);
         breakpointRefiner = new BreakpointRefiner(sampleCoverageMap, dictionary);
         evidenceCollector = new PairedEndAndSplitReadEvidenceAggregator(splitReadSource, discordantPairSource, dictionary, null);
+
+        final Function<Collection<SVCallRecordWithEvidence>,SVCallRecordWithEvidence> collapser = SVCallRecordUtils::deduplicateWithEvidence;
+        deduplicator = new SVCallRecordDeduplicator<>(collapser, dictionary);
 
         writer = createVCFWriter(Paths.get(outputFile));
         writeVCFHeader();
@@ -230,7 +234,7 @@ public final class SVCluster extends VariantWalker {
     @Override
     public void apply(final VariantContext variant, final ReadsContext readsContext,
                       final ReferenceContext referenceContext, final FeatureContext featureContext) {
-        final SVCallRecord call = SVCallRecord.create(variant);
+        final SVCallRecord call = SVCallRecordUtils.create(variant);
 
         // Filter
         if (!SVCallRecordUtils.isValidSize(call, minEventSize) || !SVCallRecordUtils.intervalIsIncluded(call, includedIntervalsTreeMap, minDepthOnlyIncludeOverlap)) {
@@ -260,7 +264,7 @@ public final class SVCluster extends VariantWalker {
                 .flatMap(SVCallRecordUtils::convertInversionsToBreakends);
         //Combine and sort depth and non-depth calls because they must be added in dictionary order
         Stream.concat(defragmentedStream, nonDepthStream)
-                .sorted(SVCallRecordUtils.getSiteInfoComparator(dictionary))
+                .sorted(SVCallRecordUtils.getCallComparator(dictionary))
                 .forEachOrdered(clusterEngine::add);
         nonDepthRawCallsBuffer.clear();
         logger.info("Clustering...");
@@ -271,57 +275,18 @@ public final class SVCluster extends VariantWalker {
         final List<SVCallRecordWithEvidence> refinedCalls = callsWithEvidence.stream()
                 .filter(call -> !SVDepthOnlyCallDefragmenter.isDepthOnlyCall(call) || call.getLength() >= minDepthOnlySize)
                 .map(breakpointRefiner::refineCall)
+                .sorted(SVCallRecordUtils.getCallComparator(dictionary))
                 .collect(Collectors.toList());
         logger.info("Deduplicating variants...");
-        final List<SVCallRecordWithEvidence> finalCalls = SVCallRecordUtils.deduplicateLocatables(refinedCalls, dictionary,
-                this::itemsAreIdenticalWithEvidence, this::deduplicateIdenticalItemsWithEvidence);
+        final List<SVCallRecordWithEvidence> finalCalls = deduplicator.deduplicateItems(refinedCalls);
         logger.info("Writing to file...");
         write(finalCalls);
         logger.info("Contig " + currentContig + " successfully processed");
     }
 
-    private boolean itemsAreIdenticalWithEvidence(final SVCallRecordWithEvidence a, final SVCallRecordWithEvidence b) {
-        // Since identical items have identical coordinates and SV type, evidence will also be the same
-        return clusterEngine.itemsAreIdentical(a, b);
-    }
-
-    private SVCallRecordWithEvidence deduplicateIdenticalItemsWithEvidence(final Collection<SVCallRecordWithEvidence> items) {
-        if (items.isEmpty()) {
-            return null;
-        }
-        if (items.size() == 1) {
-            return items.iterator().next();
-        }
-        final List<Genotype> genotypes = items.stream()
-                .map(SVCallRecord::getGenotypes)
-                .flatMap(Collection::stream)
-                .collect(Collectors.toList());
-        final List<String> algorithms = items.stream()
-                .map(SVCallRecord::getAlgorithms)
-                .flatMap(Collection::stream)
-                .distinct()
-                .collect(Collectors.toList());
-        final SVCallRecordWithEvidence example = items.iterator().next();
-        return new SVCallRecordWithEvidence(
-                example.getId(),
-                example.getContigA(),
-                example.getPositionA(),
-                example.getPositionB(),
-                example.getStrandA(),
-                example.getStrandB(),
-                example.getType(),
-                example.getLength(),
-                algorithms,
-                genotypes,
-                example.getStartSplitReadSites(),
-                example.getEndSplitReadSites(),
-                example.getDiscordantPairs(),
-                null);
-    }
-
     private void write(final List<SVCallRecordWithEvidence> calls) {
         calls.stream()
-                .sorted(SVCallRecordUtils.getSiteInfoComparator(dictionary))
+                .sorted(SVCallRecordUtils.getCallComparator(dictionary))
                 .map(this::buildVariantContext)
                 .forEachOrdered(writer::add);
     }

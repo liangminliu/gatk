@@ -3,11 +3,12 @@ package org.broadinstitute.hellbender.tools.sv;
 import htsjdk.samtools.util.CoordMath;
 
 /**
- * Any class that has a 2-dimensional mapping onto the genome should implement Locatable2D
- * positions should be reported as 1-based and closed at both ends
+ * Any class with loci that are potentially on different chromosomes should implement this interface.
+ * Consistent with {@link htsjdk.samtools.util.Locatable}, positions should be reported as 1-based and closed at both ends.
  *
+ * Note that no particular order is enforced for the two loci.
  */
-public interface Locatable2D {
+public interface SVLocatable {
 
     /**
      * Gets the contig name for first coordinate
@@ -35,13 +36,15 @@ public interface Locatable2D {
      * @return number of bases of reference covered by this interval, or 0 if coordinates on different contigs
      */
     default int getLengthOnReference() {
-        return isIntrachromosomal() ? CoordMath.getLength(getPositionA(), getPositionB()) : 0;
+        if (!isIntrachromosomal()) return 0;
+        if (getPositionA() <= getPositionB()) return CoordMath.getLength(getPositionA(), getPositionB());
+        return CoordMath.getLength(getPositionB(), getPositionA());
     }
 
     /**
      * @return true if positions are on the same contig
      */
     default boolean isIntrachromosomal() {
-        return (getContigA().equals(getContigB()));
+        return getContigA().equals(getContigB());
     }
 }
