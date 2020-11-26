@@ -126,20 +126,23 @@ public final class SVCallRecordUtils {
 
     public static VariantContextBuilder createBuilderWithEvidence(final SVCallRecordWithEvidence call) {
         final VariantContextBuilder builder = getVariantBuilder(call);
-        final SplitReadSite startSplitReadCounts = getSplitReadCountsAtPosition(call.getStartSplitReadSites(), call.getPositionA());
-        final SplitReadSite endSplitReadCounts = getSplitReadCountsAtPosition(call.getEndSplitReadSites(), call.getPositionB());
-        final Map<String,Integer> discordantPairCounts = getDiscordantPairCountsMap(call.getDiscordantPairs());
+        final boolean includeEvidence = !SVClusterEngine.isDepthOnlyCall(call);
+        final SplitReadSite startSplitReadCounts = includeEvidence ? getSplitReadCountsAtPosition(call.getStartSplitReadSites(), call.getPositionA()) : null;
+        final SplitReadSite endSplitReadCounts = includeEvidence ? getSplitReadCountsAtPosition(call.getEndSplitReadSites(), call.getPositionB()) : null;
+        final Map<String,Integer> discordantPairCounts = includeEvidence ? getDiscordantPairCountsMap(call.getDiscordantPairs()) : null;
         final List<Genotype> genotypes = builder.getGenotypes();
         final List<Genotype> newGenotypes = new ArrayList<>(genotypes.size());
         for (final Genotype genotype : genotypes) {
             final String sample = genotype.getSampleName();
             final GenotypeBuilder genotypeBuilder = new GenotypeBuilder(genotype);
-            final Integer startCount = startSplitReadCounts == null ? null : startSplitReadCounts.getCount(sample);
-            final Integer endCount = endSplitReadCounts == null ? null : endSplitReadCounts.getCount(sample);
-            final Integer pairedEndCount = discordantPairCounts.getOrDefault(sample, null);
-            genotypeBuilder.attribute(GATKSVVCFConstants.START_SPLIT_READ_COUNT_ATTRIBUTE, startCount);
-            genotypeBuilder.attribute(GATKSVVCFConstants.END_SPLIT_READ_COUNT_ATTRIBUTE, endCount);
-            genotypeBuilder.attribute(GATKSVVCFConstants.DISCORDANT_PAIR_COUNT_ATTRIBUTE, pairedEndCount);
+            if (includeEvidence) {
+                final Integer startCount = startSplitReadCounts.getCount(sample);
+                final Integer endCount = endSplitReadCounts.getCount(sample);
+                final Integer pairedEndCount = discordantPairCounts.getOrDefault(sample, 0);
+                genotypeBuilder.attribute(GATKSVVCFConstants.START_SPLIT_READ_COUNT_ATTRIBUTE, startCount);
+                genotypeBuilder.attribute(GATKSVVCFConstants.END_SPLIT_READ_COUNT_ATTRIBUTE, endCount);
+                genotypeBuilder.attribute(GATKSVVCFConstants.DISCORDANT_PAIR_COUNT_ATTRIBUTE, pairedEndCount);
+            }
             newGenotypes.add(genotypeBuilder.make());
         }
         builder.genotypes(newGenotypes);
@@ -163,7 +166,7 @@ public final class SVCallRecordUtils {
         return sites.stream()
                 .filter(s -> s.getPosition() == pos)
                 .findAny()
-                .orElse(null);
+                .orElse(new SplitReadSite(pos, Collections.emptyMap()));
     }
 
     private static Map<String,Integer> getDiscordantPairCountsMap(final Collection<DiscordantPairEvidence> discordantPairs) {

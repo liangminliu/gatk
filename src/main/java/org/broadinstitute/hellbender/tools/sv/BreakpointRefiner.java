@@ -76,8 +76,9 @@ public class BreakpointRefiner {
             return call;
         }
 
-        // Non-carrier samples
+        // Sample sets
         final Set<String> backgroundSamples = getBackgroundSamples(call);
+        final Set<String> calledSamples = call.getCalledSamples();
 
         // Limits on start / end positions
         final int[] bounds = getStartAndEndBounds(call);
@@ -87,12 +88,12 @@ public class BreakpointRefiner {
         // Refine start
         final int defaultStartPosition = Math.min(startUpperBound, call.getPositionA());
         final List<SplitReadSite> validStartSites = getValidStartSplitReadSites(call, startUpperBound);
-        final SplitReadSite refinedStartSite = getRefinedSite(validStartSites, call.getCalledSamples(), backgroundSamples, defaultStartPosition);
+        final SplitReadSite refinedStartSite = getRefinedSite(validStartSites, calledSamples, backgroundSamples, defaultStartPosition);
 
         // Refine end
         final int defaultEndPosition = Math.max(endLowerBound, call.getPositionB());
         final List<SplitReadSite> validEndSites = getValidEndSplitReadSites(call, endLowerBound);
-        final SplitReadSite refinedEndSite = getRefinedSite(validEndSites, call.getCalledSamples(), backgroundSamples, defaultEndPosition);
+        final SplitReadSite refinedEndSite = getRefinedSite(validEndSites, calledSamples, backgroundSamples, defaultEndPosition);
 
         // Create new record
         return new SVCallRecordWithEvidence(

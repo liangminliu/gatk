@@ -147,6 +147,7 @@ public final class SVCluster extends VariantWalker {
     private Map<String,Double> sampleCoverageMap;
     private Set<String> samples;
     private String currentContig;
+    private int numVariantsWritten = 0;
 
     private final int SPLIT_READ_QUERY_LOOKAHEAD = 0;
     private final int DISCORDANT_PAIR_QUERY_LOOKAHEAD = 0;
@@ -323,7 +324,12 @@ public final class SVCluster extends VariantWalker {
         final GenotypesContext rawCallSetGenotypes = SVCallRecordUtils.filterAndAddGenotypeAttributes(filledGenotypes, g -> true, attributeGenerator, false);
 
         final GenotypesContext nonCallGenotypes = SVCallRecordUtils.predicateGenotypeAlleles(rawCallSetGenotypes, g -> true, Collections.emptyList(), Collections.emptyList());
-        return  SVCallRecordUtils.createBuilderWithEvidence(SVCallRecordUtils.copyCallWithNewGenotypes(call, nonCallGenotypes)).make();
+        final String newId = String.format("SVx%08x", numVariantsWritten++);
+        final SVCallRecordWithEvidence finalCall = new SVCallRecordWithEvidence(newId, call.getContigA(), call.getPositionA(), call.getStrandA(), call.getContigB(),
+                call.getPositionB(), call.getStrandB(), call.getType(), call.getLength(), call.getAlgorithms(),
+                nonCallGenotypes, call.getStartSplitReadSites(), call.getEndSplitReadSites(), call.getDiscordantPairs(),
+                call.getCopyNumberDistribution());
+        return SVCallRecordUtils.createBuilderWithEvidence(SVCallRecordUtils.copyCallWithNewGenotypes(finalCall, nonCallGenotypes)).make();
     }
 
 }
