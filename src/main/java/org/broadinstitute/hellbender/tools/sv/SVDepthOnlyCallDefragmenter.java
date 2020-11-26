@@ -43,13 +43,13 @@ public class SVDepthOnlyCallDefragmenter extends LocatableClusterEngine<SVCallRe
         final int length = newEnd - newStart + 1;  //+1 because GATK intervals are inclusive
         final List<String> algorithms = cluster.stream().flatMap(v -> v.getAlgorithms().stream()).distinct().collect(Collectors.toList()); //should be depth only
         final List<Genotype> clusterGenotypes = deduplicateGenotypes(cluster.stream().flatMap(v -> v.getGenotypes().stream()).collect(Collectors.toList()));
-        return new SVCallRecord(exampleCall.getId(), exampleCall.getContigA(), newStart, newEnd, exampleCall.getStrandA(),
-                exampleCall.getStrandB(), exampleCall.getType(), length, algorithms, clusterGenotypes);
+        return new SVCallRecord(exampleCall.getId(), exampleCall.getContigA(), newStart, exampleCall.getStrandA(),
+                exampleCall.getContigB(), newEnd, exampleCall.getStrandB(), exampleCall.getType(), length, algorithms, clusterGenotypes);
     }
 
     @Override
     protected SVDeduplicator<SVCallRecord> getDeduplicator() {
-        final Function<Collection<SVCallRecord>,SVCallRecord> collapser = SVCallRecordUtils::deduplicate;
+        final Function<Collection<SVCallRecord>,SVCallRecord> collapser = SVCallRecordUtils::deduplicateWithRawCallAttribute;
         return new SVCallRecordDeduplicator(collapser, dictionary);
     }
 

@@ -95,12 +95,6 @@ public class BreakpointRefiner {
         final SplitReadSite refinedEndSite = getRefinedSite(validEndSites, call.getCalledSamples(), backgroundSamples, defaultEndPosition);
 
         // Create new record
-        if (call.getContigA().equals(call.getContigB())) {
-            return new SVCallRecordWithEvidence(
-                    call.getId(), call.getContigA(), refinedStartSite.getPosition(), refinedEndSite.getPosition(), call.getStrandA(),
-                    call.getStrandB(), call.getType(), call.getLength(), call.getAlgorithms(), call.getGenotypes(),
-                    call.getStartSplitReadSites(), call.getEndSplitReadSites(), call.getDiscordantPairs(), call.getCopyNumberDistribution());
-        }
         return new SVCallRecordWithEvidence(
                 call.getId(), call.getContigA(), refinedStartSite.getPosition(), call.getStrandA(), call.getContigB(),
                 refinedEndSite.getPosition(), call.getStrandB(), call.getType(), call.getLength(), call.getAlgorithms(),

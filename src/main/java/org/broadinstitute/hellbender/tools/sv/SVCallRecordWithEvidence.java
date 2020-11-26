@@ -16,32 +16,14 @@ public class SVCallRecordWithEvidence extends SVCallRecord {
     private final List<DiscordantPairEvidence> discordantPairs;
     private final CopyNumberPosteriorDistribution copyNumberDistribution;
 
-    public SVCallRecordWithEvidence(final SVCallRecord record) {
-        super(record.getId(), record.getContigA(), record.getPositionA(), record.getStrandA(), record.getContigB(),
-                record.getPositionB(), record.getStrandB(), record.getType(), record.getLength(), record.getAlgorithms(),
-                record.getGenotypes());
-        this.startSplitReadSites = Collections.emptyList();
-        this.endSplitReadSites = Collections.emptyList();
-        this.discordantPairs = Collections.emptyList();
-        this.copyNumberDistribution = null;
-    }
-
-    public SVCallRecordWithEvidence(final String id,
-                                    final String contig,
-                                    final int start,
-                                    final int end,
-                                    final boolean strand1,
-                                    final boolean strand2,
-                                    final StructuralVariantType type,
-                                    final int length,
-                                    final List<String> algorithms,
-                                    final List<Genotype> genotypes,
+    public SVCallRecordWithEvidence(final SVCallRecord record,
                                     final List<SplitReadSite> startSplitReadSites,
                                     final List<SplitReadSite> endSplitReadSites,
                                     final List<DiscordantPairEvidence> discordantPairs,
                                     final CopyNumberPosteriorDistribution copyNumberDistribution) {
-        this(id, contig, start, strand1, contig, end, strand2, type, length, algorithms, genotypes,
-                startSplitReadSites, endSplitReadSites, discordantPairs, copyNumberDistribution);
+        this(record.getId(), record.getContigA(), record.getPositionA(), record.getStrandA(), record.getContigB(),
+                record.getPositionB(), record.getStrandB(), record.getType(), record.getLength(), record.getAlgorithms(),
+                record.getGenotypes(), startSplitReadSites, endSplitReadSites, discordantPairs, copyNumberDistribution);
     }
 
     public SVCallRecordWithEvidence(final String id,
@@ -63,12 +45,12 @@ public class SVCallRecordWithEvidence extends SVCallRecord {
         Utils.nonNull(startSplitReadSites);
         Utils.nonNull(endSplitReadSites);
         Utils.nonNull(discordantPairs);
-        Utils.containsNoNull(startSplitReadSites, "Encountered null in start split reads");
-        Utils.containsNoNull(endSplitReadSites, "Encountered null in end split reads");
-        Utils.containsNoNull(discordantPairs, "Encountered null in discordant pairs");
-        this.startSplitReadSites = startSplitReadSites;
-        this.endSplitReadSites = endSplitReadSites;
-        this.discordantPairs = discordantPairs;
+        Utils.containsNoNull(startSplitReadSites, "Encountered null in start split reads, use empty list instead");
+        Utils.containsNoNull(endSplitReadSites, "Encountered null in end split reads, use empty list instead");
+        Utils.containsNoNull(discordantPairs, "Encountered null in discordant pairs, use empty list instead");
+        this.startSplitReadSites = Collections.unmodifiableList(startSplitReadSites);
+        this.endSplitReadSites = Collections.unmodifiableList(endSplitReadSites);
+        this.discordantPairs = Collections.unmodifiableList(discordantPairs);
         this.copyNumberDistribution = copyNumberDistribution;
     }
 

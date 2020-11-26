@@ -203,12 +203,12 @@ public class JointCNVSegmentation extends MultiVariantWalkerGroupedOnStart {
             } else {
                 doDefragmentation = true;
             }
-            final SVCallRecord record = SVCallRecordUtils.createDepthOnlyFromGCNV(vc, minQS);
+            final SVCallRecord record = SVCallRecordUtils.createDepthOnlyFromGCNVWithOriginalGenotypes(vc, minQS);
             if (record != null) {
                 if (doDefragmentation) {
-                    defragmenter.add(new SVCallRecordWithEvidence(record));
+                    defragmenter.add(new SVCallRecordWithEvidence(record, Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), null));
                 } else {
-                    clusterEngine.add(new SVCallRecordWithEvidence(record));
+                    clusterEngine.add(new SVCallRecordWithEvidence(record, Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), null));
                 }
             }
         }

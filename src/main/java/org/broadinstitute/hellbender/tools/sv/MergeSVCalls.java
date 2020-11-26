@@ -18,13 +18,14 @@ import org.broadinstitute.hellbender.exceptions.UserException;
 import org.broadinstitute.hellbender.tools.copynumber.PostprocessGermlineCNVCalls;
 import org.broadinstitute.hellbender.tools.spark.sv.utils.GATKSVVCFConstants;
 import org.broadinstitute.hellbender.tools.spark.sv.utils.GATKSVVCFHeaderLines;
-import org.broadinstitute.hellbender.utils.Utils;
 import org.broadinstitute.hellbender.utils.io.IOUtils;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
@@ -137,8 +138,18 @@ public final class MergeSVCalls extends GATKTool {
 
     @Override
     public Object onTraversalSuccess() {
-        samples = records.stream().flatMap(r -> r.getCalledSamples().stream()).sorted().collect(Collectors.toCollection(LinkedHashSet::new));
-        sortAndDeduplicateRecords();
+        samples = records.stream().flatMap(r -> r.getCalledSamples().stream())
+                .sorted().collect(Collectors.toCollection(LinkedHashSet::new));
+
+        // Sort variants
+        records = records.stream().sorted(SVCallRecordUtils.getCallComparator(dictionary)).collect(Collectors.toList());
+
+        // Deduplicate
+        final Function<Collection<SVCallRecord>, SVCallRecord> collapser = SVCallRecordUtils::deduplicateWithRawCallAttribute;
+        final SVCallRecordDeduplicator deduplicator = new SVCallRecordDeduplicator(collapser, dictionary);
+        records = deduplicator.deduplicateItems(records);
+
+        // Write
         writeVariants();
         return null;
     }
@@ -149,62 +160,8 @@ public final class MergeSVCalls extends GATKTool {
             processCNMOPSFile(path);
         }
         for (int i = 0; i < inputFiles.size(); i++) {
-            processVariantFile(inputFiles.get(i), i);
+            processVcf(inputFiles.get(i), i);
         }
-    }
-
-    private void sortAndDeduplicateRecords() {
-        records = records.stream().sorted(SVCallRecordUtils.getCallComparator(dictionary)).collect(Collectors.toList());
-        final List<SVCallRecord> newRecords = new ArrayList<>(records.size());
-        List<SVCallRecord> currentCluster = new ArrayList<>();
-        SVCallRecord exampleRecord = null;
-        for (final SVCallRecord record : records) {
-            if (currentCluster.isEmpty()) {
-                currentCluster.add(record);
-                exampleRecord = record;
-            } else if (SVCallRecordUtils.compareCalls(record, exampleRecord, dictionary) == 0) {
-                currentCluster.add(record);
-            } else {
-                newRecords.add(combineRecords(currentCluster, samples));
-                currentCluster = new ArrayList<>();
-                currentCluster.add(record);
-                exampleRecord = record;
-            }
-        }
-        records = newRecords;
-    }
-
-    private static SVCallRecord combineRecords(final List<SVCallRecord> records, final Set<String> samples) {
-        Utils.validateArg(!records.isEmpty(), "Can't combine empty list");
-        // Trivial case
-        if (records.size() == 1) {
-            return records.get(0);
-        }
-
-        // Create genotype contexts so we can look up by sample id
-        final List<GenotypesContext> contexts = new ArrayList<>(records.size());
-        for (final SVCallRecord record : records) {
-            final GenotypesContext context =  GenotypesContext.create(record.getGenotypes().size());
-            record.getGenotypes().forEach(context::add);
-            contexts.add(context);
-        }
-
-        final SVCallRecord firstRecord = records.get(0);
-        final List<Genotype> newGenotypes = new ArrayList(firstRecord.getGenotypes().size());
-        for (final String sample : samples) {
-            // Set raw call attribute true if at least one is true
-            final boolean hasCall = contexts.stream().map(c -> c.get(sample))
-                    .filter(Objects::nonNull)
-                    .anyMatch(SVCallRecord::isCarrier);
-            final GenotypeBuilder builder = new GenotypeBuilder(sample).attribute(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, hasCall ? GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_TRUE : GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_FALSE);
-            newGenotypes.add(builder.make());
-        }
-
-        //Combine algorithms
-        final List<String> algorithms = records.stream().map(SVCallRecord::getAlgorithms).flatMap(List::stream).distinct().collect(Collectors.toList());
-        return new SVCallRecord(firstRecord.getId(), firstRecord.getContigA(), firstRecord.getPositionA(), firstRecord.getStrandA(),
-                firstRecord.getContigB(), firstRecord.getPositionB(), firstRecord.getStrandB(), firstRecord.getType(), firstRecord.getLength(),
-                algorithms, newGenotypes);
     }
 
     private void processCNMOPSFile(final String path) {
@@ -230,7 +187,7 @@ public final class MergeSVCalls extends GATKTool {
         final String contig = tokens[0];
         final int start = Integer.valueOf(tokens[1]);
         final int end = Integer.valueOf(tokens[2]);
-        final Set<String> samples = Collections.singleton(tokens[4]);
+        final String sample = tokens[4];
         final StructuralVariantType type = StructuralVariantType.valueOf(tokens[5]);
         if (!type.equals(StructuralVariantType.DEL) && !type.equals(StructuralVariantType.DUP)) {
             throw new UserException.BadInput("Unexpected cnMOPS record type: " + type.name());
@@ -241,18 +198,18 @@ public final class MergeSVCalls extends GATKTool {
         final boolean endStrand = !isDel;
         final List<String> algorithms = Collections.singletonList(GATKSVVCFConstants.DEPTH_ALGORITHM);
         // Make genotypes het to play nicely with the defragmenter
-        final List<Genotype> genotypes = samples.stream().map(MergeSVCalls::buildHetGenotype).collect(Collectors.toList());
+        final List<Genotype> genotypes = Collections.singletonList(buildRawCallGenotype(sample));
         final String id = String.format("cnmops_%s_%s_%d_%d", type.toString(), contig, start, end);
-        return new SVCallRecord(id, contig, start, end, startStrand, endStrand, type, length, algorithms, genotypes);
+        return new SVCallRecord(id, contig, start, startStrand, contig, end, endStrand, type, length, algorithms, genotypes);
     }
 
-    private static Genotype buildHetGenotype(final String sample) {
+    private static Genotype buildRawCallGenotype(final String sample) {
         final GenotypeBuilder builder = new GenotypeBuilder(sample);
-        builder.alleles(Collections.singletonList(Allele.NON_REF_ALLELE));
+        builder.attribute(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_TRUE);
         return builder.make();
     }
 
-    private void processVariantFile(final String file, final int index) {
+    private void processVcf(final String file, final int index) {
         final FeatureDataSource<VariantContext> source = getFeatureDataSource(file, "file_" + index);
         final VCFHeader header = getHeaderFromFeatureSource(source);
         final VCFHeaderLine headerSource = header.getMetaDataLine("source");
@@ -260,12 +217,19 @@ public final class MergeSVCalls extends GATKTool {
         final Stream<SVCallRecord> inputRecords;
         if (headerSource != null && headerSource.getValue().equals(PostprocessGermlineCNVCalls.class.getSimpleName())) {
             inputRecords = inputVariants
-                    .map(v -> SVCallRecordUtils.createDepthOnlyFromGCNV(v, minGCNVQuality))
+                    .map(v -> SVCallRecordUtils.createDepthOnlyFromGCNVWithOriginalGenotypes(v, minGCNVQuality))
                     .filter(r -> r != null);
         } else {
             inputRecords = inputVariants.map(SVCallRecordUtils::create);
         }
-        inputRecords.forEachOrdered(records::add);
+        inputRecords.map(this::sanitizeVcfGenotypes).forEachOrdered(records::add);
+    }
+
+    private SVCallRecord sanitizeVcfGenotypes(final SVCallRecord record) {
+        final Predicate<Genotype> filter = g -> SVCallRecord.isCarrier(g);
+        final Function<Genotype, Map<String,Object>> attributeGenerator = g -> Collections.singletonMap(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_TRUE);
+        final GenotypesContext genotypes = SVCallRecordUtils.filterAndAddGenotypeAttributes(record.getGenotypes(), filter, attributeGenerator, true);
+        return SVCallRecordUtils.copyCallWithNewGenotypes(record, genotypes);
     }
 
     private VCFHeader getHeaderFromFeatureSource(final FeatureDataSource<VariantContext> source) {
@@ -295,9 +259,16 @@ public final class MergeSVCalls extends GATKTool {
 
     private VariantContext createVariant(final SVCallRecord call) {
         final VariantContextBuilder builder = SVCallRecordUtils.getVariantBuilder(call);
-        builder.genotypes(SVCallRecordUtils.fillMissingGenotypes(builder.getGenotypes(), samples));
-        builder.genotypes(SVCallRecordUtils.getRawCallAttributesAndWipe(builder.getGenotypes(), call));
+        builder.genotypes(SVCallRecordUtils.fillMissingSamplesWithEmptyGenotypes(builder.getGenotypes(), samples));
+        builder.genotypes(sanitizeCreateVariantGenotypes(builder.getGenotypes()));
         return builder.make();
+    }
+
+    private GenotypesContext sanitizeCreateVariantGenotypes(final GenotypesContext genotypes) {
+        final Predicate<Genotype> filter = g -> true;
+        final Function<Genotype, Map<String,Object>> attributeGenerator =
+                g -> g.hasAnyAttribute(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE) ? Collections.emptyMap() : Collections.singletonMap(GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_FALSE);
+        return SVCallRecordUtils.filterAndAddGenotypeAttributes(genotypes, filter, attributeGenerator, false);
     }
 
     private VCFHeader getVcfHeader() {

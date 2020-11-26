@@ -29,23 +29,6 @@ public class SVCallRecord implements SVLocatable {
     private final List<String> algorithms;
     private final GenotypesContext genotypes;
 
-    private Set<String> allSamples;
-    private Set<String> calledSamples;
-    private Set<String> carrierSamples;
-
-    public SVCallRecord(final String id,
-                        final String contig,
-                        final int start,
-                        final int end,
-                        final boolean strandA,
-                        final boolean strandB,
-                        final StructuralVariantType type,
-                        final int length,
-                        final List<String> algorithms,
-                        final List<Genotype> genotypes) {
-        this(id, contig, start, strandA, contig, end, strandB, type, length, algorithms, genotypes);
-    }
-
     public SVCallRecord(final String id,
                         final String contigA,
                         final int positionA,
@@ -63,8 +46,6 @@ public class SVCallRecord implements SVLocatable {
         Utils.nonNull(type);
         Utils.nonNull(algorithms);
         Utils.nonNull(genotypes);
-        Utils.nonEmpty(algorithms);
-        Utils.nonEmpty(genotypes);
         Utils.containsNoNull(algorithms, "Encountered null algorithm");
         Utils.containsNoNull(genotypes, "Encountered null genotype");
         this.id = id;
@@ -77,7 +58,7 @@ public class SVCallRecord implements SVLocatable {
         this.type = type;
         this.length = length;
         this.algorithms = Collections.unmodifiableList(algorithms);
-        this.genotypes = GenotypesContext.copy(genotypes);
+        this.genotypes = GenotypesContext.copy(genotypes).immutable();
     }
 
     public String getId() {
@@ -125,31 +106,22 @@ public class SVCallRecord implements SVLocatable {
     }
 
     public Set<String> getAllSamples() {
-        if (allSamples == null) {
-            allSamples = genotypes.stream().map(Genotype::getSampleName)
-                    .collect(Collectors.toCollection(LinkedHashSet::new));
-        }
-        return allSamples;
+        return genotypes.stream().map(Genotype::getSampleName)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     public Set<String> getCalledSamples() {
-        if (calledSamples == null) {
-            calledSamples = genotypes.stream()
-                    .filter(g -> !g.getType().equals(GenotypeType.NO_CALL) || g.hasExtendedAttribute(GATKSVVCFConstants.COPY_NUMBER_FORMAT)) //skip no-calls that don't have copy number (i.e. not dupe no-calls)
-                    .map(Genotype::getSampleName)
-                    .collect(Collectors.toCollection(LinkedHashSet::new));
-        }
-        return calledSamples;
+        return genotypes.stream()
+                .filter(g -> !g.getType().equals(GenotypeType.NO_CALL) || g.hasExtendedAttribute(GATKSVVCFConstants.COPY_NUMBER_FORMAT)) //skip no-calls that don't have copy number (i.e. not dupe no-calls)
+                .map(Genotype::getSampleName)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     public Set<String> getCarrierSamples() {
-        if (carrierSamples == null) {
-            carrierSamples = genotypes.stream()
-                    .filter(SVCallRecord::isCarrier)
-                    .map(Genotype::getSampleName)
-                    .collect(Collectors.toCollection(LinkedHashSet::new));
-        }
-        return carrierSamples;
+        return genotypes.stream()
+                .filter(SVCallRecord::isCarrier)
+                .map(Genotype::getSampleName)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     public static boolean isCarrier(final Genotype g) {
@@ -162,7 +134,7 @@ public class SVCallRecord implements SVLocatable {
         return VariantContextGetters.getAttributeAsInt(g, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE, GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_FALSE) == GATKSVVCFConstants.RAW_CALL_ATTRIBUTE_TRUE;
     }
 
-    public List<Genotype> getGenotypes() {
+    public GenotypesContext getGenotypes() {
         return genotypes;
     }
 

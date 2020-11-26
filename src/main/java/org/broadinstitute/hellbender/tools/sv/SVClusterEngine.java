@@ -116,8 +116,8 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecord> {
         }
 
         //TODO: merge evidence for WGS data
-        return new SVCallRecord(exampleCall.getId(), exampleCall.getContigA(), newStart, newEnd, exampleCall.getStrandA(),
-                exampleCall.getStrandB(), clusterType, length, algorithms, clusterSamples);
+        return new SVCallRecord(exampleCall.getId(), exampleCall.getContigA(), newStart, exampleCall.getStrandA(),
+                exampleCall.getContigB(), newEnd, exampleCall.getStrandB(), clusterType, length, algorithms, clusterSamples);
     }
 
     @Override
@@ -164,7 +164,7 @@ public class SVClusterEngine extends LocatableClusterEngine<SVCallRecord> {
 
     @Override
     protected SVDeduplicator<SVCallRecord> getDeduplicator() {
-        final Function<Collection<SVCallRecord>,SVCallRecord> collapser = SVCallRecordUtils::deduplicate;
+        final Function<Collection<SVCallRecord>,SVCallRecord> collapser = SVCallRecordUtils::deduplicateWithRawCallAttribute;
         return new SVCallRecordDeduplicator(collapser, dictionary);
     }
 
